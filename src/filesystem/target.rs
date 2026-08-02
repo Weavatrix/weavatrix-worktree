@@ -44,7 +44,24 @@ impl TargetAccess {
             if segments.peek().is_none() {
                 name = Some(segment.to_owned());
             } else {
-                parent = parent.open_dir_nofollow(segment)?;
+                let metadata = parent.symlink_metadata(segment)?;
+                if is_link_or_reparse(&metadata) {
+                    return Err(invalid("target parent is a symbolic link or reparse point"));
+                }
+                parent = match parent.open_dir_nofollow(segment) {
+                    Ok(dir) => dir,
+                    Err(open_error) => {
+                        if parent
+                            .symlink_metadata(segment)
+                            .is_ok_and(|metadata| is_link_or_reparse(&metadata))
+                        {
+                            return Err(invalid(
+                                "target parent is a symbolic link or reparse point",
+                            ));
+                        }
+                        return Err(open_error);
+                    }
+                };
                 let metadata = parent.dir_metadata()?;
                 if is_link_or_reparse(&metadata) {
                     return Err(invalid("target parent is a symbolic link or reparse point"));

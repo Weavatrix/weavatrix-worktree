@@ -9,6 +9,7 @@ import {
 import path from 'node:path';
 
 import { ADAPTER_SCHEMA, MANIFEST_SCHEMA } from './constants.mjs';
+import { generateUnifiedPatch } from './git-patch.mjs';
 import { isWithin, sha256 } from './util.mjs';
 
 function fixedToken(prefix, width = 32) {
@@ -89,6 +90,7 @@ export function generateScenario(sampleRoot, fileCount, fileBytes) {
   mkdirSync(sourceDirectory, { recursive: true });
   const files = [];
   const expected = new Map();
+  const patchFiles = [];
   for (let fileIndex = 0; fileIndex < fileCount; fileIndex += 1) {
     const basename = `file-${String(fileIndex).padStart(4, '0')}.rs`;
     const relative = `src/${basename}`;
@@ -105,6 +107,11 @@ export function generateScenario(sampleRoot, fileCount, fileBytes) {
       edits: fixture.edits,
     });
     expected.set(relative, { sourceHash, expectedHash });
+    patchFiles.push({
+      path: relative,
+      sourceBytes: fixture.sourceBytes,
+      outputBytes: fixture.outputBytes,
+    });
   }
   const manifest = {
     schema: MANIFEST_SCHEMA,
@@ -114,8 +121,10 @@ export function generateScenario(sampleRoot, fileCount, fileBytes) {
     files,
   };
   const manifestPath = path.join(sampleRoot, 'manifest.json');
+  const patchPath = path.join(sampleRoot, 'changes.patch');
   writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`, 'utf8');
-  return { workspace, manifestPath, manifest, expected };
+  writeFileSync(patchPath, generateUnifiedPatch(patchFiles), 'utf8');
+  return { workspace, manifestPath, patchPath, manifest, expected };
 }
 
 function scanTree(root) {

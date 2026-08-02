@@ -22,6 +22,7 @@ or derive a universal speed ranking.
 - Node.js 20 or newer. The harness uses only Node standard-library modules.
 - Rust/Cargo to build the isolated Weavatrix adapter or locally install
   `atomwrite`.
+- Git for the worktree-only `git apply` baseline.
 - A local filesystem with enough free space for fresh fixtures on every sample.
 
 ## First run and self-check
@@ -30,6 +31,7 @@ From the repository root:
 
 ```powershell
 node tools/benchmarks/run.mjs self-check
+node --test tools/benchmarks/tests/harness.test.mjs
 node tools/benchmarks/run.mjs detect
 ```
 
@@ -143,6 +145,30 @@ durability-equivalent ranking. Leftover transaction backups also fail the
 artifact-cleanup gate rather than being silently removed outside the timed tool
 operation.
 
+## `git apply` non-durable baseline
+
+`git apply` is a whole-patch applicability baseline, not a durable transaction:
+
+```powershell
+node tools/benchmarks/run.mjs run `
+  --adapter git-apply `
+  --counts 1,5,10,64 `
+  --modes dry-run,non-durable-apply `
+  --file-bytes 65536 `
+  --warmups 5 `
+  --repetitions 30
+```
+
+The harness generates the unified patch from the same source and expected tree
+before timing. It runs worktree-only `git apply --no-index`; dry-run adds
+`--check`. It never passes `--reject`, `--3way`, `--index`, or `--unsafe-paths`.
+
+Git exposes no worker control, so the matrix contains one `null` worker value
+and rejects `--workers`. Git documents no file/directory sync, journal, restart
+recovery, or full-file hash CAS. These results always use
+`non-durable-apply`, set `equivalent_to_weavatrix_recoverable_batch = false`,
+and must not appear in a durable comparison table.
+
 ## Output files
 
 Each run directory contains:
@@ -188,6 +214,7 @@ Any failed recorded sample makes that configuration non-publishable.
 --output DIR            explicit result directory
 --weavatrix-bin PATH    explicit Weavatrix adapter binary
 --atomwrite-bin PATH    explicit atomwrite binary
+--git-bin PATH          explicit Git binary
 ```
 
 Use `node tools/benchmarks/run.mjs help` for the complete current syntax.

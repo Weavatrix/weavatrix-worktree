@@ -4,11 +4,13 @@ import path from 'node:path';
 
 import {
   ATOMWRITE_ADAPTER,
+  GIT_APPLY_ADAPTER,
   LOCAL_ATOMWRITE,
   LOCAL_ATOMWRITE_ROOT,
   LOCAL_ATOMWRITE_TARGET,
   LOCAL_WEAVATRIX,
   REFERENCE_ADAPTER,
+  REPO_ROOT,
   WEAVATRIX_MANIFEST,
   WEAVATRIX_TARGET,
 } from './constants.mjs';
@@ -50,6 +52,7 @@ export function detectAdapters(options = {}) {
     options['weavatrix-bin'], LOCAL_WEAVATRIX, 'weavatrix-worktree-bench-adapter',
   );
   const atomwriteBinary = resolveBinary(options['atomwrite-bin'], LOCAL_ATOMWRITE, 'atomwrite');
+  const gitBinary = resolveBinary(options['git-bin'], '', 'git');
   return {
     reference: {
       available: existsSync(REFERENCE_ADAPTER),
@@ -67,6 +70,12 @@ export function detectAdapters(options = {}) {
       ...probeBinary(atomwriteBinary),
       install_command: `cargo install atomwrite --version 0.1.35 --locked --root "${LOCAL_ATOMWRITE_ROOT}"`,
       worker_control: true,
+      equivalent_to_weavatrix_recoverable_batch: false,
+    },
+    'git-apply': {
+      ...probeBinary(gitBinary),
+      worker_control: false,
+      durability: false,
       equivalent_to_weavatrix_recoverable_batch: false,
     },
   };
@@ -91,6 +100,18 @@ export function adapterInvocation(adapter, detection, scenario, mode, workers, t
       args: [ATOMWRITE_ADAPTER, '--atomwrite-bin', detection.atomwrite.binary, ...common],
       timeoutMs,
     };
+  }
+  if (adapter === 'git-apply') {
+    const args = [
+      GIT_APPLY_ADAPTER,
+      '--git-bin', detection['git-apply'].binary,
+      '--workspace', scenario.workspace,
+      '--repository-root', REPO_ROOT,
+      '--manifest', scenario.manifestPath,
+      '--patch', scenario.patchPath,
+      '--mode', mode,
+    ];
+    return { command: process.execPath, args, timeoutMs };
   }
   throw new Error(`unsupported adapter: ${adapter}`);
 }

@@ -5,17 +5,17 @@ import { timestampId } from './util.mjs';
 
 export const HELP = `Usage:
   node tools/benchmarks/run.mjs self-check [--output DIR]
-  node tools/benchmarks/run.mjs detect [--weavatrix-bin PATH] [--atomwrite-bin PATH]
+  node tools/benchmarks/run.mjs detect [--weavatrix-bin PATH] [--atomwrite-bin PATH] [--git-bin PATH]
   node tools/benchmarks/run.mjs build-weavatrix
   node tools/benchmarks/run.mjs install-atomwrite
   node tools/benchmarks/run.mjs refresh-machine-filesystem --result DIR
   node tools/benchmarks/run.mjs run [options]
 
 Run options:
-  --adapter NAME          reference, weavatrix, or atomwrite (default weavatrix)
+  --adapter NAME          reference, weavatrix, atomwrite, or git-apply
   --counts LIST           comma list from 1,5,10,64 (default all)
-  --workers LIST          comma list (default 1,2,4,8)
-  --modes LIST            dry-run,durable-apply (default both)
+  --workers LIST          comma list (default 1,2,4,8; invalid for git-apply)
+  --modes LIST            adapter-specific modes (default both supported modes)
   --file-bytes N          exact bytes per UTF-8 fixture file (default 65536)
   --warmups N             retained warmups per configuration (default 5)
   --repetitions N         recorded samples per configuration (default 30)
@@ -24,6 +24,7 @@ Run options:
   --output DIR            result directory; must be absent or empty
   --weavatrix-bin PATH    explicit Rust adapter binary
   --atomwrite-bin PATH    explicit atomwrite binary
+  --git-bin PATH          explicit Git binary
 `;
 
 export function parseOptions(argv) {
@@ -77,8 +78,8 @@ function integerListOption(options, name, fallback) {
 
 export function validateRunOptions(options, overrides = {}) {
   const adapter = overrides.adapter ?? options.adapter ?? 'weavatrix';
-  if (!['reference', 'weavatrix', 'atomwrite'].includes(adapter)) {
-    throw new Error('--adapter must be reference, weavatrix, or atomwrite');
+  if (!['reference', 'weavatrix', 'atomwrite', 'git-apply'].includes(adapter)) {
+    throw new Error('--adapter must be reference, weavatrix, atomwrite, or git-apply');
   }
   const counts = overrides.counts ?? integerListOption(options, 'counts', '1,5,10,64');
   for (const count of counts) {
@@ -86,12 +87,26 @@ export function validateRunOptions(options, overrides = {}) {
       throw new Error(`unsupported --counts value: ${count}`);
     }
   }
-  const requestedWorkers = overrides.workers
-    ?? integerListOption(options, 'workers', '1,2,4,8');
-  const modes = overrides.modes ?? listOption(options, 'modes', 'dry-run,durable-apply');
+  const workerless = adapter === 'git-apply';
+  if (workerless && (options.workers !== undefined || overrides.workers !== undefined)) {
+    throw new Error('--workers is not supported by git-apply');
+  }
+  const requestedWorkers = workerless
+    ? []
+    : (overrides.workers ?? integerListOption(options, 'workers', '1,2,4,8'));
+  const defaultModes = workerless
+    ? 'dry-run,non-durable-apply'
+    : 'dry-run,durable-apply';
+  const modes = overrides.modes ?? listOption(options, 'modes', defaultModes);
   for (const mode of modes) {
     if (!ALLOWED_MODES.has(mode)) {
       throw new Error(`unsupported --modes value: ${mode}`);
+    }
+    if (workerless && mode === 'durable-apply') {
+      throw new Error('git-apply does not support durable-apply');
+    }
+    if (!workerless && mode === 'non-durable-apply') {
+      throw new Error(`${adapter} does not use the non-durable-apply benchmark mode`);
     }
   }
   const output = path.resolve(overrides.output ?? options.output
@@ -100,7 +115,7 @@ export function validateRunOptions(options, overrides = {}) {
     adapter,
     counts,
     requested_workers: requestedWorkers,
-    workers: requestedWorkers,
+    workers: workerless ? [null] : requestedWorkers,
     modes,
     file_bytes: overrides.fileBytes ?? integerOption(options, 'file-bytes', 65_536, 1_024),
     warmups: overrides.warmups ?? integerOption(options, 'warmups', 5, 0),
@@ -110,5 +125,6 @@ export function validateRunOptions(options, overrides = {}) {
     output,
     weavatrix_bin: options['weavatrix-bin'],
     atomwrite_bin: options['atomwrite-bin'],
+    git_bin: options['git-bin'],
   };
 }

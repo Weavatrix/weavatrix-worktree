@@ -433,6 +433,7 @@ dependencies = [
  "cap-std",
  "fs4",
  "getrandom",
+ "rustix",
  "serde",
  "sha2",
  "weavatrix-edit",

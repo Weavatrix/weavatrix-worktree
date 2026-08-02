@@ -24,7 +24,7 @@ function ensureOutputDirectory(directory) {
   }
 }
 
-function configurationsFor(config) {
+export function configurationsFor(config) {
   const configurations = [];
   for (const fileCount of config.counts) {
     for (const mode of config.modes) {
@@ -55,6 +55,7 @@ function prepareOutput(config, runId, detection) {
     output: config.output,
     track: 'SUBPROCESS_END_TO_END',
     atomwrite_worker_axis_collapsed: false,
+    worker_axis_collapsed: config.workers.length === 1 && config.workers[0] === null,
   }, null, 2)}\n`);
   writeFileSync(paths.machine, `${JSON.stringify(
     machineMetadata(detection, config.adapter), null, 2,
@@ -109,11 +110,14 @@ export function runMatrix(config) {
   const detection = detectAdapters({
     'weavatrix-bin': config.weavatrix_bin,
     'atomwrite-bin': config.atomwrite_bin,
+    'git-bin': config.git_bin,
   });
   if (!detection[config.adapter].available) {
     const hint = config.adapter === 'weavatrix'
       ? detection.weavatrix.build_command
-      : detection.atomwrite.install_command;
+      : config.adapter === 'atomwrite'
+        ? detection.atomwrite.install_command
+        : 'install Git or pass --git-bin PATH';
     throw new Error(`${config.adapter} adapter is unavailable. Prepare it with: ${hint}`);
   }
   const runId = `${timestampId()}-${config.adapter}-${process.pid}`;

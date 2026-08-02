@@ -102,9 +102,11 @@ resource-budget overflow. Stage and backup files are created exclusively next
 to their target. Version 0.1 preserves portable file permissions; it does not
 promise ownership, ACL, xattr, alternate-stream, or sparse-layout cloning.
 File and journal contents are synchronized on every platform. Parent-directory
-`fsync` is enforced on Unix; Windows rejects `FlushFileBuffers` for directory
-handles, so directory-entry persistence there is best-effort and is not
-claimed as power-loss durability.
+`fsync` is required on Unix and any failure is surfaced. This is an
+OS/filesystem synchronization contract, not proof that a storage device honored
+its flushes. Windows rejects `FlushFileBuffers` for directory handles, so
+directory-entry persistence there is best-effort. Version 0.1 does not claim
+absolute power-loss durability on every filesystem or storage device.
 
 The root lock coordinates cooperating `weavatrix-worktree` callers. A hostile
 or unaware process with write access can still race the final hash check and

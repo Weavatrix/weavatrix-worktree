@@ -4,7 +4,7 @@ An adapter is an executable invoked as:
 
 ```text
 ADAPTER --workspace ROOT --manifest MANIFEST.json \
-        --mode dry-run|durable-apply --workers N
+        --mode dry-run|durable-apply|non-durable-apply [--workers N]
 ```
 
 It must write exactly one JSON object to stdout and diagnostics to stderr. A
@@ -27,6 +27,10 @@ successful object contains at least:
 On failure, the adapter should emit the same schema with `ok: false`, an
 `error` string, and exit non-zero. The harness does not trust an adapter's
 correctness claim: it independently hashes the fixture and scans artifacts.
+
+Adapters without worker control report both worker fields as `null`, and the
+harness creates one configuration for that axis. `non-durable-apply` is a
+separate result class and is never recoverable-batch equivalent.
 
 ## Manifest schema
 
@@ -62,3 +66,7 @@ Line numbers are one-based and characters are zero-based, matching the public
 `weavatrix-edit::Position` API used by the Rust adapter. Core fixtures are ASCII,
 so byte, Unicode scalar, and UTF-16 columns coincide; separate Unicode-position
 correctness tests belong in the product suite rather than this I/O benchmark.
+
+For `git-apply`, the harness also writes `changes.patch` beside the manifest,
+outside the scanned workspace and before the subprocess timer starts. The Git
+adapter receives it with `--patch`; expected output hashes remain authoritative.

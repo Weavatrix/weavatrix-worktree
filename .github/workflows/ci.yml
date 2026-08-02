@@ -72,3 +72,36 @@ jobs:
           RUSTDOCFLAGS: -D warnings
         run: cargo doc --locked --no-deps
       - run: cargo test --locked --doc
+
+  benchmark-harness:
+    name: Benchmark harness
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 2026-07-29
+        with:
+          toolchain: stable
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+      - run: node --test tools/benchmarks/tests/harness.test.mjs
+      - run: node tools/benchmarks/run.mjs self-check --output tools/benchmarks/results/ci-self-check
+      - run: >-
+          cargo build --release --locked
+          --manifest-path tools/benchmarks/weavatrix-adapter/Cargo.toml
+          --target-dir tools/benchmarks/.tools/weavatrix-target
+      - run: >-
+          node tools/benchmarks/run.mjs run
+          --adapter weavatrix --counts 1 --workers 1
+          --modes dry-run,durable-apply --file-bytes 4096
+          --warmups 0 --repetitions 1
+          --output tools/benchmarks/results/ci-weavatrix
+      - run: >-
+          node tools/benchmarks/run.mjs run
+          --adapter git-apply --counts 1
+          --modes dry-run,non-durable-apply --file-bytes 4096
+          --warmups 0 --repetitions 1
+          --output tools/benchmarks/results/ci-git-apply

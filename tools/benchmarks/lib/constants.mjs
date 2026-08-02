@@ -7,6 +7,7 @@ export const WORK_ROOT = path.join(SCRIPT_DIR, '.work');
 export const RESULT_ROOT = path.join(SCRIPT_DIR, 'results');
 export const REFERENCE_ADAPTER = path.join(SCRIPT_DIR, 'adapters', 'reference.mjs');
 export const ATOMWRITE_ADAPTER = path.join(SCRIPT_DIR, 'adapters', 'atomwrite.mjs');
+export const GIT_APPLY_ADAPTER = path.join(SCRIPT_DIR, 'adapters', 'git-apply.mjs');
 export const WEAVATRIX_MANIFEST = path.join(SCRIPT_DIR, 'weavatrix-adapter', 'Cargo.toml');
 export const LOCAL_ATOMWRITE_ROOT = path.join(SCRIPT_DIR, '.tools', 'atomwrite');
 export const LOCAL_ATOMWRITE_TARGET = path.join(SCRIPT_DIR, '.tools', 'atomwrite-target');
@@ -28,7 +29,7 @@ export const SAMPLE_SCHEMA = 'weavatrix.worktree-benchmark-sample.v1';
 export const MANIFEST_SCHEMA = 'weavatrix.worktree-benchmark-manifest.v1';
 export const ADAPTER_SCHEMA = 'weavatrix.worktree-benchmark-adapter.v1';
 export const ALLOWED_COUNTS = new Set([1, 5, 10, 64]);
-export const ALLOWED_MODES = new Set(['dry-run', 'durable-apply']);
+export const ALLOWED_MODES = new Set(['dry-run', 'durable-apply', 'non-durable-apply']);
 export const CSV_FIELDS = [
   'schema', 'run_id', 'sample_id', 'timestamp_utc', 'adapter', 'adapter_version',
   'track', 'mode', 'durability_contract', 'equivalent_to_weavatrix_recoverable_batch',

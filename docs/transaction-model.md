@@ -57,9 +57,12 @@ multi-file commit.
     reverse. Worker completion order never affects reports or errors.
 
 File and journal contents are synchronized on every supported platform.
-Parent-directory `fsync` is a strict barrier on Unix. Windows directory handles
-reject `FlushFileBuffers`; directory-entry persistence is therefore
-best-effort on Windows and v0.1 does not claim power-loss durability there.
+Parent-directory `fsync` is required on Unix and failures are surfaced; the
+guarantee is limited to the synchronization calls accepted by the OS and
+filesystem, not proof that a storage device honored its flushes. Windows
+directory handles reject `FlushFileBuffers`, so directory-entry persistence is
+best-effort there. Version 0.1 does not claim absolute power-loss durability on
+every filesystem or storage device.
 
 The advisory root lock serializes cooperating library users. An unrelated
 writer can still race the immediate hash/identity revalidation and the target
