@@ -51,7 +51,8 @@ Potential references:
 
 - a future `weavatrix-worktree` CLI;
 - [`atomwrite batch`](https://docs.rs/crate/atomwrite/0.1.35);
-- [`git apply`](https://git-scm.com/docs/git-apply).
+- the system Git CLI's [`git apply`](https://git-scm.com/docs/git-apply), not
+  the separate read-only `weavatrix-git` project.
 
 Do not compare a library-track number with a CLI-track number. `cargo fix` is not
 a filesystem throughput peer because compiler execution and validation dominate

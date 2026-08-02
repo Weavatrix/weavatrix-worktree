@@ -22,7 +22,8 @@ or derive a universal speed ranking.
 - Node.js 20 or newer. The harness uses only Node standard-library modules.
 - Rust/Cargo to build the isolated Weavatrix adapter or locally install
   `atomwrite`.
-- Git for the worktree-only `git apply` baseline.
+- The system Git CLI for the worktree-only `git apply` baseline. This is not
+  the read-only `weavatrix-git` crate.
 - A local filesystem with enough free space for fresh fixtures on every sample.
 
 ## First run and self-check
@@ -145,7 +146,7 @@ durability-equivalent ranking. Leftover transaction backups also fail the
 artifact-cleanup gate rather than being silently removed outside the timed tool
 operation.
 
-## `git apply` non-durable baseline
+## System Git CLI `git apply` non-durable baseline
 
 `git apply` is a whole-patch applicability baseline, not a durable transaction:
 

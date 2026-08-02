@@ -116,7 +116,9 @@ Callers needing hostile-writer isolation must provide it outside this crate.
 ## Competitors and benchmarks
 
 The [competitor audit](docs/competitors.md) compares this contract with
-`atomwrite`, `textum`, `rustfix`, Cargo Fix, `git apply`, libgit2, and gix.
+`atomwrite`, `textum`, `rustfix`, Cargo Fix, the system Git CLI's `git apply`,
+libgit2, and gix. The Git CLI baseline is unrelated to the read-only
+[`weavatrix-git`](https://github.com/sergii-ziborov/weavatrix-git) project.
 The [benchmark protocol](docs/benchmarks.md) defines correctness-gated 1, 5,
 10, and 64-file scenarios, concurrency sweeps, durable/non-durable separation,
 fault injection, and resource measurements. Benchmark numbers are published

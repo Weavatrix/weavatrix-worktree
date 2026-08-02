@@ -30,6 +30,10 @@ atomically visible. Those are different guarantees.
 `Not specified` means the cited layer delegates the behavior to another layer;
 it does not mean that every application built on it is unsafe.
 
+The `git apply` row below is the installed system Git CLI. It is unrelated to
+[`weavatrix-git`](https://github.com/sergii-ziborov/weavatrix-git), whose public
+contract is read-only Git evidence with no checkout or repository mutation.
+
 | System | Scope and preflight | Stale-source guard | Path and link safety | Concurrency | Failure and recovery | Durability contract |
 | --- | --- | --- | --- | --- | --- | --- |
 | [`textum::PatchSet` 0.4.0](https://docs.rs/textum/0.4.0/src/textum/composer.rs.html) | Groups patches by file, reads every target, resolves snippets, and rejects overlapping non-empty ranges before `write_to_files` starts writing. | No file version or whole-file hash. Snippet matching only protects the addressed text. | Target files are arbitrary strings passed to `std::fs`; there is no workspace jail in `PatchSet`. | Files are prepared and written sequentially. | The crate explicitly documents that a write error can leave some files written and others untouched. There is no batch rollback. | `write_to_files` uses `std::fs::write`; no atomic rename or file/directory sync is provided by this layer. |
