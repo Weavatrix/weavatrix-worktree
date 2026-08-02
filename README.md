@@ -120,7 +120,9 @@ The [competitor audit](docs/competitors.md) compares this contract with
 The [benchmark protocol](docs/benchmarks.md) defines correctness-gated 1, 5,
 10, and 64-file scenarios, concurrency sweeps, durable/non-durable separation,
 fault injection, and resource measurements. Benchmark numbers are published
-only with exact commands, machine data, and output-equivalence evidence.
+only with exact commands, machine data, and output-equivalence evidence. The
+[2026-08-02 benchmark report](docs/benchmark-results-2026-08-02.md) links its
+complete public raw evidence bundle.
 
 ## License
 
