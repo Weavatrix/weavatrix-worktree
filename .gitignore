@@ -1,0 +1,6 @@
+/target/
+**/target/
+tools/benchmarks/.tools/
+tools/benchmarks/results/
+/.weavatrix/worktree/
+/benchmark-results/

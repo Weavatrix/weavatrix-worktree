@@ -1,0 +1,141 @@
+{
+  "architectureContractV": 1,
+  "name": "Weavatrix Worktree crash-recoverable transaction library",
+  "style": "layered-transaction-library",
+  "enforcement": "strict",
+  "components": [
+    {
+      "id": "contract",
+      "name": "Stable limits, options, hashes, reports, phases, and errors",
+      "paths": [
+        "src/error.rs",
+        "src/hash.rs",
+        "src/limits.rs",
+        "src/options.rs",
+        "src/report.rs"
+      ]
+    },
+    {
+      "id": "filesystem",
+      "name": "Capability-rooted paths, identities, artifacts, replace, and durability",
+      "paths": ["src/filesystem"]
+    },
+    {
+      "id": "journal",
+      "name": "Bounded journal records, checksums, persistence, and replay",
+      "paths": ["src/journal"]
+    },
+    {
+      "id": "scheduler",
+      "name": "Bounded scoped workers, cancellation, and byte permits",
+      "paths": ["src/scheduler"]
+    },
+    {
+      "id": "edit_bridge",
+      "name": "Pure adapter from weavatrix-edit plans to prepared output",
+      "paths": ["src/edit.rs"]
+    },
+    {
+      "id": "transaction",
+      "name": "Prepare, stage, commit, rollback, and recovery orchestration",
+      "paths": ["src/transaction"]
+    },
+    {
+      "id": "facade",
+      "name": "Public Worktree and PreparedTransaction facade",
+      "paths": ["src/lib.rs", "src/worktree.rs"]
+    },
+    {
+      "id": "verification",
+      "name": "Tests, fault injection, benchmarks, and development tools",
+      "paths": ["tests", "benches", "tools"]
+    },
+    {
+      "id": "documentation",
+      "name": "Public documentation and normative transaction model",
+      "paths": ["README.md", "docs"]
+    }
+  ],
+  "dependencyRules": [
+    {
+      "id": "runtime-does-not-depend-on-verification",
+      "action": "forbid",
+      "from": [
+        "contract",
+        "filesystem",
+        "journal",
+        "scheduler",
+        "edit_bridge",
+        "transaction",
+        "facade"
+      ],
+      "to": ["verification"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "contract-is-inward",
+      "action": "forbid",
+      "from": ["contract"],
+      "to": [
+        "filesystem",
+        "journal",
+        "scheduler",
+        "edit_bridge",
+        "transaction",
+        "facade"
+      ],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "filesystem-does-not-own-orchestration",
+      "action": "forbid",
+      "from": ["filesystem"],
+      "to": ["journal", "scheduler", "edit_bridge", "transaction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "journal-does-not-own-scheduling-or-transactions",
+      "action": "forbid",
+      "from": ["journal"],
+      "to": ["scheduler", "edit_bridge", "transaction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "scheduler-is-filesystem-and-edit-independent",
+      "action": "forbid",
+      "from": ["scheduler"],
+      "to": ["filesystem", "journal", "edit_bridge", "transaction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "edit-bridge-is-pure",
+      "action": "forbid",
+      "from": ["edit_bridge"],
+      "to": ["filesystem", "journal", "scheduler", "transaction", "facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    },
+    {
+      "id": "transaction-does-not-depend-on-facade",
+      "action": "forbid",
+      "from": ["transaction"],
+      "to": ["facade"],
+      "kinds": ["imports", "re_exports", "depends_on"]
+    }
+  ],
+  "budgets": {
+    "runtimeCycles": 0,
+    "maxFileLoc": 300,
+    "maxFunctionLoc": 100
+  },
+  "technologies": {
+    "required": ["rust"],
+    "forbidden": ["unsafe-rust", "tokio", "async-runtime", "network-runtime"]
+  },
+  "exceptions": [],
+  "ratchet": {
+    "baseline": {
+      "fingerprints": [],
+      "metrics": {}
+    }
+  }
+}
