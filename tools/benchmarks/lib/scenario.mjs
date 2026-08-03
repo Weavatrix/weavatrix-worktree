@@ -76,6 +76,108 @@ function generateFile(fileIndex, fileBytes) {
   return { sourceBytes, outputBytes, edits };
 }
 
+function fileState(bytes) {
+  return { state: 'file', bytes: bytes.length, sha256: sha256(bytes) };
+}
+
+const MISSING = Object.freeze({ state: 'missing' });
+
+function ensureParent(workspace, relative) {
+  mkdirSync(path.dirname(path.join(workspace, ...relative.split('/'))), { recursive: true });
+}
+
+function writeFixture(workspace, relative, bytes) {
+  ensureParent(workspace, relative);
+  writeFileSync(path.join(workspace, ...relative.split('/')), bytes);
+}
+
+function addExpected(expected, relative, before, after) {
+  if (expected.has(relative)) {
+    throw new Error(`benchmark operation graph touches a path twice: ${relative}`);
+  }
+  expected.set(relative, { before, after });
+}
+
+function modifyOperation(workspace, expected, patchOperations, index, fileBytes) {
+  const fixture = generateFile(index, fileBytes);
+  const relative = `modify/file-${String(index).padStart(4, '0')}.rs`;
+  writeFixture(workspace, relative, fixture.sourceBytes);
+  const before = fileState(fixture.sourceBytes);
+  const after = fileState(fixture.outputBytes);
+  addExpected(expected, relative, before, after);
+  patchOperations.push({
+    type: 'modify', path: relative,
+    sourceBytes: fixture.sourceBytes, outputBytes: fixture.outputBytes,
+  });
+  return {
+    type: 'modify',
+    path: relative,
+    source_sha256: before.sha256,
+    output_sha256: after.sha256,
+    bytes_before: before.bytes,
+    bytes_after: after.bytes,
+    edits: fixture.edits,
+  };
+}
+
+function createOperation(workspace, expected, patchOperations, index, fileBytes) {
+  const fixture = generateFile(index, fileBytes);
+  const relative = `create/file-${String(index).padStart(4, '0')}.rs`;
+  ensureParent(workspace, relative);
+  const after = fileState(fixture.sourceBytes);
+  addExpected(expected, relative, MISSING, after);
+  patchOperations.push({ type: 'create', path: relative, outputBytes: fixture.sourceBytes });
+  return {
+    type: 'create',
+    path: relative,
+    content: fixture.sourceBytes.toString('utf8'),
+    output_sha256: after.sha256,
+    bytes_after: after.bytes,
+  };
+}
+
+function deleteOperation(workspace, expected, patchOperations, index, fileBytes) {
+  const fixture = generateFile(index, fileBytes);
+  const relative = `delete/file-${String(index).padStart(4, '0')}.rs`;
+  writeFixture(workspace, relative, fixture.sourceBytes);
+  const before = fileState(fixture.sourceBytes);
+  addExpected(expected, relative, before, MISSING);
+  patchOperations.push({ type: 'delete', path: relative, sourceBytes: fixture.sourceBytes });
+  return {
+    type: 'delete',
+    path: relative,
+    source_sha256: before.sha256,
+    bytes_before: before.bytes,
+  };
+}
+
+function renameOperation(workspace, expected, patchOperations, index, fileBytes) {
+  const fixture = generateFile(index, fileBytes);
+  const suffix = `file-${String(index).padStart(4, '0')}.rs`;
+  const source = `rename-source/${suffix}`;
+  const target = `rename-target/${suffix}`;
+  writeFixture(workspace, source, fixture.sourceBytes);
+  ensureParent(workspace, target);
+  const state = fileState(fixture.sourceBytes);
+  addExpected(expected, source, state, MISSING);
+  addExpected(expected, target, MISSING, state);
+  patchOperations.push({ type: 'rename', source, target });
+  return {
+    type: 'rename',
+    source,
+    target,
+    source_sha256: state.sha256,
+    bytes_before: state.bytes,
+  };
+}
+
+const FACTORIES = {
+  modify: modifyOperation,
+  create: createOperation,
+  delete: deleteOperation,
+  rename: renameOperation,
+};
+
 export function resetOwnedDirectory(directory, ownerRoot) {
   if (!isWithin(directory, ownerRoot)) {
     throw new Error(`refusing to reset path outside benchmark work root: ${directory}`);
@@ -84,47 +186,100 @@ export function resetOwnedDirectory(directory, ownerRoot) {
   mkdirSync(directory, { recursive: true });
 }
 
-export function generateScenario(sampleRoot, fileCount, fileBytes) {
+export function analyzeRenameGraph(operations) {
+  const edges = new Map();
+  for (const operation of operations.filter((item) => item.type === 'rename')) {
+    if (edges.has(operation.source)) {
+      throw new Error(`duplicate rename source: ${operation.source}`);
+    }
+    edges.set(operation.source, operation.target);
+  }
+  const chains = [...edges]
+    .filter(([, target]) => edges.has(target))
+    .map(([source, target]) => ({ source, target, next: edges.get(target) }));
+  const cycles = [];
+  const completed = new Set();
+  for (const start of edges.keys()) {
+    if (completed.has(start)) continue;
+    const order = [];
+    const positions = new Map();
+    let current = start;
+    while (edges.has(current) && !completed.has(current)) {
+      if (positions.has(current)) {
+        cycles.push(order.slice(positions.get(current)));
+        break;
+      }
+      positions.set(current, order.length);
+      order.push(current);
+      current = edges.get(current);
+    }
+    order.forEach((pathValue) => completed.add(pathValue));
+  }
+  return { chains, cycles };
+}
+
+export function generateScenario(sampleRoot, workload, operationCount, fileBytes) {
+  if (!(workload in FACTORIES) && workload !== 'mixed') {
+    throw new Error(`unsupported benchmark workload: ${workload}`);
+  }
+  if (workload === 'mixed' && operationCount !== 10) {
+    throw new Error('mixed workload is exactly ten operations');
+  }
   const workspace = path.join(sampleRoot, 'workspace');
-  const sourceDirectory = path.join(workspace, 'src');
-  mkdirSync(sourceDirectory, { recursive: true });
-  const files = [];
+  mkdirSync(workspace, { recursive: true });
   const expected = new Map();
-  const patchFiles = [];
-  for (let fileIndex = 0; fileIndex < fileCount; fileIndex += 1) {
-    const basename = `file-${String(fileIndex).padStart(4, '0')}.rs`;
-    const relative = `src/${basename}`;
-    const fixture = generateFile(fileIndex, fileBytes);
-    writeFileSync(path.join(sourceDirectory, basename), fixture.sourceBytes);
-    const sourceHash = sha256(fixture.sourceBytes);
-    const expectedHash = sha256(fixture.outputBytes);
-    files.push({
-      path: relative,
-      sha256: sourceHash,
-      expected_sha256: expectedHash,
-      bytes_before: fixture.sourceBytes.length,
-      bytes_after: fixture.outputBytes.length,
-      edits: fixture.edits,
-    });
-    expected.set(relative, { sourceHash, expectedHash });
-    patchFiles.push({
-      path: relative,
-      sourceBytes: fixture.sourceBytes,
-      outputBytes: fixture.outputBytes,
-    });
+  const patchOperations = [];
+  const operations = [];
+  // An unrelated control file proves that tools neither replace the workspace root nor
+  // damage paths outside the operation graph. It also keeps the fixture root observable
+  // when a delete-only Git patch removes every requested target and prunes empty parents.
+  const controlPath = 'control/untouched.txt';
+  const controlBytes = Buffer.from('benchmark control: must remain byte-identical\n', 'utf8');
+  writeFixture(workspace, controlPath, controlBytes);
+  const controlState = fileState(controlBytes);
+  addExpected(expected, controlPath, controlState, controlState);
+  if (workload === 'mixed') {
+    for (let index = 0; index < 6; index += 1) {
+      operations.push(modifyOperation(workspace, expected, patchOperations, index, fileBytes));
+    }
+    for (let index = 6; index < 8; index += 1) {
+      operations.push(createOperation(workspace, expected, patchOperations, index, fileBytes));
+    }
+    for (let index = 8; index < 10; index += 1) {
+      operations.push(deleteOperation(workspace, expected, patchOperations, index, fileBytes));
+    }
+  } else {
+    const factory = FACTORIES[workload];
+    for (let index = 0; index < operationCount; index += 1) {
+      operations.push(factory(workspace, expected, patchOperations, index, fileBytes));
+    }
   }
   const manifest = {
     schema: MANIFEST_SCHEMA,
-    operation: 'benchmark_exact_replace',
-    file_count: fileCount,
+    fixture_generator: 'weavatrix-fixed-markers-v2',
+    fixture_seed: null,
+    operation: `benchmark_${workload}`,
+    workload,
+    operation_count: operations.length,
+    touched_path_count: expected.size - 1,
     file_bytes: fileBytes,
-    files,
+    operations,
   };
   const manifestPath = path.join(sampleRoot, 'manifest.json');
   const patchPath = path.join(sampleRoot, 'changes.patch');
   writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`, 'utf8');
-  writeFileSync(patchPath, generateUnifiedPatch(patchFiles), 'utf8');
-  return { workspace, manifestPath, patchPath, manifest, expected };
+  writeFileSync(patchPath, generateUnifiedPatch(patchOperations), 'utf8');
+  const expectedDirectories = new Set();
+  for (const relative of expected.keys()) {
+    let parent = path.posix.dirname(relative);
+    while (parent !== '.') {
+      expectedDirectories.add(parent);
+      parent = path.posix.dirname(parent);
+    }
+  }
+  return {
+    workspace, manifestPath, patchPath, manifest, expected, expectedDirectories,
+  };
 }
 
 function scanTree(root) {
@@ -136,6 +291,7 @@ function scanTree(root) {
       const absolute = path.join(directory, entry.name);
       const relative = path.relative(root, absolute).split(path.sep).join('/');
       if (entry.isDirectory()) {
+        observed.push({ path: relative, type: 'directory', bytes: null, sha256: null });
         visit(absolute);
       } else if (entry.isFile()) {
         const bytes = readFileSync(absolute);
@@ -156,31 +312,49 @@ function scanTree(root) {
   return observed;
 }
 
-function allowedPersistentArtifact(adapter, relative) {
-  return adapter === 'weavatrix' && relative === '.weavatrix/worktree/lock';
+function allowedPersistentArtifact(adapter, entry) {
+  return adapter === 'weavatrix' && (
+    (entry.type === 'file' && entry.path === '.weavatrix/worktree/lock')
+    || (entry.type === 'directory'
+      && (entry.path === '.weavatrix' || entry.path === '.weavatrix/worktree'))
+  );
+}
+
+function stateMatches(expected, actual) {
+  if (expected.state === 'missing') {
+    return actual === undefined;
+  }
+  return actual?.type === 'file'
+    && actual.sha256 === expected.sha256
+    && actual.bytes === expected.bytes;
 }
 
 export function correctnessGates(adapter, mode, scenario, processResult) {
   const observed = scanTree(scenario.workspace);
   const observedByPath = new Map(observed.map((entry) => [entry.path, entry]));
-  const hashFailures = [];
-  for (const [relative, hashes] of scenario.expected.entries()) {
-    const entry = observedByPath.get(relative);
-    const expectedHash = mode === 'dry-run' ? hashes.sourceHash : hashes.expectedHash;
-    if (entry?.type !== 'file' || entry.sha256 !== expectedHash) {
-      hashFailures.push({
+  const stateFailures = [];
+  const phase = mode === 'dry-run' ? 'before' : 'after';
+  for (const [relative, states] of scenario.expected.entries()) {
+    const expectedState = states[phase];
+    const actual = observedByPath.get(relative);
+    if (!stateMatches(expectedState, actual)) {
+      stateFailures.push({
         path: relative,
-        expected_sha256: expectedHash,
-        actual_sha256: entry?.sha256 ?? null,
-        actual_type: entry?.type ?? 'missing',
+        expected_state: expectedState.state,
+        expected_sha256: expectedState.sha256 ?? null,
+        expected_bytes: expectedState.bytes ?? null,
+        actual_state: actual === undefined ? 'missing' : actual.type,
+        actual_sha256: actual?.sha256 ?? null,
+        actual_bytes: actual?.bytes ?? null,
       });
     }
   }
-  const extras = observed.filter((entry) => !scenario.expected.has(entry.path));
+  const extras = observed.filter((entry) => !scenario.expected.has(entry.path)
+    && !scenario.expectedDirectories.has(entry.path));
   const allowedArtifacts = extras
-    .filter((entry) => allowedPersistentArtifact(adapter, entry.path));
+    .filter((entry) => allowedPersistentArtifact(adapter, entry));
   const unexpectedArtifacts = extras
-    .filter((entry) => !allowedPersistentArtifact(adapter, entry.path));
+    .filter((entry) => !allowedPersistentArtifact(adapter, entry));
   const adapterJson = processResult.adapterResult;
   const adapterJsonGate = adapterJson !== null
     && adapterJson.schema === ADAPTER_SCHEMA
@@ -189,10 +363,27 @@ export function correctnessGates(adapter, mode, scenario, processResult) {
     adapter_exit: processResult.exitCode === 0 && processResult.error === null,
     adapter_json: adapterJsonGate,
     adapter_report_count: adapterJsonGate
-      && Number(adapterJson.files) === scenario.manifest.file_count,
-    content_hashes: hashFailures.length === 0,
+      && Number(adapterJson.operations) === scenario.manifest.operation_count
+      && Number(adapterJson.touched_paths) === scenario.manifest.touched_path_count,
+    adapter_resource_budget: adapter !== 'weavatrix' || (adapterJsonGate
+      && Number(adapterJson.effective_max_files) >= scenario.manifest.touched_path_count
+      && Number(adapterJson.effective_max_paths) >= scenario.manifest.touched_path_count),
+    tree_state: stateFailures.length === 0,
     artifact_cleanup: unexpectedArtifacts.length === 0,
   };
   gates.all = Object.values(gates).every(Boolean);
-  return { gates, hashFailures, observed, allowedArtifacts, unexpectedArtifacts };
+  const expectedTree = [...scenario.expected.entries()].map(([relative, states]) => ({
+    path: relative,
+    before: states.before,
+    after: states.after,
+  }));
+  return {
+    gates,
+    stateFailures,
+    observed,
+    allowedArtifacts,
+    unexpectedArtifacts,
+    expectedTree,
+    touchedPathCount: scenario.manifest.touched_path_count,
+  };
 }

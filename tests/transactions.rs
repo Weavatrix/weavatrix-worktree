@@ -4,7 +4,11 @@ mod contract;
 mod guards;
 #[path = "transactions/happy.rs"]
 mod happy;
+#[path = "transactions/operations.rs"]
+mod operations;
 #[path = "transactions/recovery.rs"]
 mod recovery;
 #[path = "transactions/support.rs"]
 mod support;
+#[path = "transactions/undo.rs"]
+mod undo;

@@ -23,7 +23,7 @@ function validatePath(relative) {
 
 function changedLines(before, after) {
   if (before.length !== after.length) {
-    throw new Error('benchmark Git patches require unchanged line counts');
+    throw new Error('modify benchmark Git patches require unchanged line counts');
   }
   const changed = [];
   for (let index = 0; index < before.length; index += 1) {
@@ -60,14 +60,14 @@ function patchLine(prefix, line) {
   return `${prefix}${line.text}\n${marker}`;
 }
 
-function patchForFile(file, contextLines) {
-  validatePath(file.path);
-  const before = splitLines(file.sourceBytes.toString('utf8'));
-  const after = splitLines(file.outputBytes.toString('utf8'));
+function modifyPatch(operation, contextLines) {
+  validatePath(operation.path);
+  const before = splitLines(operation.sourceBytes.toString('utf8'));
+  const after = splitLines(operation.outputBytes.toString('utf8'));
   const changed = changedLines(before, after);
   const windows = mergeWindows(changed, before.length, contextLines);
-  let patch = `diff --git a/${file.path} b/${file.path}\n`;
-  patch += `--- a/${file.path}\n+++ b/${file.path}\n`;
+  let patch = `diff --git a/${operation.path} b/${operation.path}\n`;
+  patch += `--- a/${operation.path}\n+++ b/${operation.path}\n`;
   for (const window of windows) {
     const count = window.end - window.start;
     patch += `@@ -${window.start + 1},${count} +${window.start + 1},${count} @@\n`;
@@ -84,12 +84,56 @@ function patchForFile(file, contextLines) {
   return patch;
 }
 
-export function generateUnifiedPatch(files, contextLines = 3) {
+function createPatch(operation) {
+  validatePath(operation.path);
+  const lines = splitLines(operation.outputBytes.toString('utf8'));
+  if (lines.length === 0) throw new Error('create benchmark content must be non-empty');
+  let patch = `diff --git a/${operation.path} b/${operation.path}\n`;
+  patch += 'new file mode 100644\n';
+  patch += '--- /dev/null\n';
+  patch += `+++ b/${operation.path}\n`;
+  patch += `@@ -0,0 +1,${lines.length} @@\n`;
+  patch += lines.map((line) => patchLine('+', line)).join('');
+  return patch;
+}
+
+function deletePatch(operation) {
+  validatePath(operation.path);
+  const lines = splitLines(operation.sourceBytes.toString('utf8'));
+  if (lines.length === 0) throw new Error('delete benchmark content must be non-empty');
+  let patch = `diff --git a/${operation.path} b/${operation.path}\n`;
+  patch += 'deleted file mode 100644\n';
+  patch += `--- a/${operation.path}\n`;
+  patch += '+++ /dev/null\n';
+  patch += `@@ -1,${lines.length} +0,0 @@\n`;
+  patch += lines.map((line) => patchLine('-', line)).join('');
+  return patch;
+}
+
+function renamePatch(operation) {
+  validatePath(operation.source);
+  validatePath(operation.target);
+  return [
+    `diff --git a/${operation.source} b/${operation.target}`,
+    'similarity index 100%',
+    `rename from ${operation.source}`,
+    `rename to ${operation.target}`,
+    '',
+  ].join('\n');
+}
+
+export function generateUnifiedPatch(operations, contextLines = 3) {
   if (!Number.isSafeInteger(contextLines) || contextLines < 1) {
     throw new Error('Git patch context must be a positive integer');
   }
-  if (!Array.isArray(files) || files.length === 0) {
-    throw new Error('Git patch requires at least one fixture file');
+  if (!Array.isArray(operations) || operations.length === 0) {
+    throw new Error('Git patch requires at least one fixture operation');
   }
-  return files.map((file) => patchForFile(file, contextLines)).join('');
+  return operations.map((operation) => {
+    if (operation.type === 'modify') return modifyPatch(operation, contextLines);
+    if (operation.type === 'create') return createPatch(operation);
+    if (operation.type === 'delete') return deletePatch(operation);
+    if (operation.type === 'rename') return renamePatch(operation);
+    throw new Error(`unsupported Git patch operation: ${String(operation.type)}`);
+  }).join('');
 }

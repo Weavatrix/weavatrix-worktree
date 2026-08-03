@@ -50,7 +50,7 @@ stdout and stderr captured in the same way.
 Potential references:
 
 - a future `weavatrix-worktree` CLI;
-- [`atomwrite batch`](https://docs.rs/crate/atomwrite/0.1.35);
+- [`atomwrite batch` 0.1.36](https://docs.rs/crate/atomwrite/0.1.36);
 - the system Git CLI's [`git apply`](https://git-scm.com/docs/git-apply), not
   the separate read-only `weavatrix-git` project.
 
@@ -65,21 +65,23 @@ Every fixture is generated from a recorded seed and immutable template. The
 expected output tree is generated independently of the implementation under
 test.
 
-### Core agent workload
+### Operation workloads
 
 | Axis | Required values |
 | --- | --- |
-| Files modified | `1`, `5`, `10`, `64` |
+| Logical operations | `1`, `5`, `10`, `64` for each homogeneous workload |
+| Operation kinds | `modify`, `create`, `delete`, and independent `rename` |
 | Input size per file | `64 KiB` |
-| Edits per file | Three unique exact markers near 10%, 50%, and 90% of the file |
+| Modify edits | Three unique exact markers near 10%, 50%, and 90% of the file |
 | Encoding | Valid UTF-8 with LF line endings |
 | Replacement size | Same byte length as the marker, to isolate scheduling and I/O from growth allocation |
-| Directory layout | All files in one target directory |
-| Initial state | Every existing target has an expected BLAKE3 or SHA-256 content hash |
+| Initial state | Existing inputs have full SHA-256 evidence; create and rename destinations must be absent |
 
 Markers must include the file index and position so a search-based engine cannot
 silently match the wrong occurrence. Every implementation receives semantically
-equivalent edits and must produce byte-identical output.
+equivalent operations and must produce the exact independently calculated
+path/state/hash tree. One unrelated control file must remain byte-identical in
+every mode.
 
 ### Size sweep
 
@@ -105,11 +107,16 @@ as equal-length replacement.
 
 ### Mixed-operation workload
 
-After create and delete operations are implemented, use a ten-path plan with six
-modifications, two creations, and two deletions. Add rename only after its cycle,
-collision, and rollback semantics are implemented. A competitor that does not
-support an operation is marked unsupported rather than emulated with a different
-contract.
+The mixed headline is exactly ten logical operations: six modifications, two
+creations, and two deletions. Rename throughput uses independent source and
+destination pairs. Rename chains, swaps, cycles, case-only paths, occupied
+destinations, and rollback are correctness cases and never silently enter the
+latency headline. A competitor that does not support an operation is marked
+unsupported rather than emulated with a different contract.
+
+The runnable manifest is `weavatrix.worktree-benchmark-manifest.v2`. It records
+`operation_count` separately from `touched_path_count`; one rename is one
+logical operation but touches two paths.
 
 ## Safety and durability modes
 
@@ -134,6 +141,10 @@ particular:
 - `atomwrite batch` without `--transaction` and with `--transaction` are separate
   modes. Its audited transaction path uses backups and compensating rollback;
   label it accordingly rather than equating it with group atomic visibility.
+  Version 0.1.36 retains transaction rollback `.bak` snapshots for pre-existing
+  paths after successful batches even with its strongest documented cleanup
+  settings. Durable rows therefore belong to a separate non-publishable audit;
+  the harness must not delete the artifacts on the competitor's behalf.
 - `atomic-write-file` is a per-file baseline and must not be labelled a
   multi-file transaction.
 
@@ -205,8 +216,12 @@ system metadata occur outside the timed interval.
    user security control merely to improve a result; report its state.
 5. Restore the fixture from the immutable template before every sample. Verify
    the input tree hash before starting the timer.
-6. Randomize tool order within each repetition so thermal drift, storage cache,
-   and background activity do not always favor one tool.
+6. For cross-tool publication, drive the individual adapter runs from an
+   interleaving controller (`tools/benchmarks/compare.mjs` in this repository)
+   that randomizes tool order within every repetition;
+   a set of separate complete tool runs is functional evidence only and cannot
+   support a speed ranking because thermal drift, storage cache, and background
+   activity may favor one tool.
 7. Use five untimed warmups followed by 30 measured samples by default. A
    predeclared slow profile may use 15 samples; if fewer than 20 samples are
    collected, do not publish a p95 value. Never change sample count after seeing
@@ -227,7 +242,14 @@ applicable gates.
 ### Successful application
 
 - The complete output tree is byte-identical to the independent expected tree.
-- The report contains one stable input-order result for every requested path.
+- Create destinations are absent before execution and contain the exact planned
+  bytes afterwards.
+- Delete inputs match their complete SHA-256 before execution and are absent
+  afterwards.
+- Rename sources match their complete SHA-256, destinations are absent, and the
+  exact source bytes move to the destination.
+- The report contains one stable input-order result for every logical operation;
+  operation and touched-path counts are both exact.
 - Source encodings and line endings are unchanged except where the plan requests
   a change.
 - The implementation does not modify paths outside the workspace or protected
@@ -288,6 +310,11 @@ A process-kill test validates journal/recovery logic; it does **not** simulate
 power loss or prove that a storage device honored flushes. A stronger durability
 claim needs a platform-specific filesystem/storage fault harness, or must be
 limited to the synchronization calls the implementation successfully completed.
+
+Rename chains and cycles must additionally be exercised in the product
+correctness suite. The benchmark harness classifies them in its Node self-check,
+but excludes them from latency matrices because sequential tools can otherwise
+receive a materially different operation graph.
 
 Resource-bound gates, report tables, and the permitted claim language are in
 [Benchmark reporting](benchmark-reporting.md).

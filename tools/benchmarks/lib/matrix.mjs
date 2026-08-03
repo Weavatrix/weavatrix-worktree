@@ -26,10 +26,23 @@ function ensureOutputDirectory(directory) {
 
 export function configurationsFor(config) {
   const configurations = [];
-  for (const fileCount of config.counts) {
-    for (const mode of config.modes) {
-      for (const workers of config.workers) {
-        configurations.push({ fileCount, fileBytes: config.file_bytes, mode, workers });
+  for (const workload of config.workloads) {
+    for (const operationCount of config.counts) {
+      // The mixed contract is deliberately one fixed ten-operation agent workload:
+      // six modifications, two creations, and two deletions.
+      if (workload === 'mixed' && operationCount !== 10) {
+        continue;
+      }
+      for (const mode of config.modes) {
+        for (const workers of config.workers) {
+          configurations.push({
+            workload,
+            operationCount,
+            fileBytes: config.file_bytes,
+            mode,
+            workers,
+          });
+        }
       }
     }
   }
@@ -46,10 +59,10 @@ function outputPaths(output) {
   };
 }
 
-function prepareOutput(config, runId, detection) {
+function prepareOutput(config, runId, detection, preparedMachine) {
   const paths = outputPaths(config.output);
   writeFileSync(paths.config, `${JSON.stringify({
-    schema: 'weavatrix.worktree-benchmark-config.v1',
+    schema: 'weavatrix.worktree-benchmark-config.v2',
     run_id: runId,
     ...config,
     output: config.output,
@@ -58,7 +71,7 @@ function prepareOutput(config, runId, detection) {
     worker_axis_collapsed: config.workers.length === 1 && config.workers[0] === null,
   }, null, 2)}\n`);
   writeFileSync(paths.machine, `${JSON.stringify(
-    machineMetadata(detection, config.adapter), null, 2,
+    preparedMachine ?? machineMetadata(detection, config.adapter), null, 2,
   )}\n`);
   writeFileSync(paths.jsonl, '');
   writeFileSync(paths.csv, `${CSV_FIELDS.join(',')}\n`);
@@ -70,7 +83,12 @@ function executeSample(context, configuration, warmup, iteration) {
   context.sequence += 1;
   const sampleRoot = path.join(context.runWorkRoot, sampleId);
   resetOwnedDirectory(sampleRoot, context.runWorkRoot);
-  const scenario = generateScenario(sampleRoot, configuration.fileCount, configuration.fileBytes);
+  const scenario = generateScenario(
+    sampleRoot,
+    configuration.workload,
+    configuration.operationCount,
+    configuration.fileBytes,
+  );
   const invocation = adapterInvocation(
     context.config.adapter,
     context.detection,
@@ -97,17 +115,19 @@ function executeSample(context, configuration, warmup, iteration) {
   context.rows.push(row);
   appendFileSync(context.paths.jsonl, `${JSON.stringify(row)}\n`);
   appendFileSync(context.paths.csv, csvRow(row));
-  process.stderr.write(
-    `[${sampleId}] ${context.config.adapter} ${configuration.mode} files=${configuration.fileCount} workers=${String(configuration.workers ?? 'default')} ${row.elapsed_ms.toFixed(3)}ms gates=${row.gates.all ? 'pass' : 'FAIL'}\n`,
-  );
+  if (context.config.quiet !== true) {
+    process.stderr.write(
+      `[${sampleId}] ${context.config.adapter} ${configuration.mode} workload=${configuration.workload} operations=${configuration.operationCount} workers=${String(configuration.workers ?? 'default')} ${row.elapsed_ms.toFixed(3)}ms gates=${row.gates.all ? 'pass' : 'FAIL'}\n`,
+    );
+  }
   rmSync(sampleRoot, { recursive: true, force: true });
 }
 
-export function runMatrix(config) {
+export function runMatrix(config, prepared = {}) {
   mkdirSync(WORK_ROOT, { recursive: true });
   mkdirSync(RESULT_ROOT, { recursive: true });
   ensureOutputDirectory(config.output);
-  const detection = detectAdapters({
+  const detection = prepared.detection ?? detectAdapters({
     'weavatrix-bin': config.weavatrix_bin,
     'atomwrite-bin': config.atomwrite_bin,
     'git-bin': config.git_bin,
@@ -128,11 +148,16 @@ export function runMatrix(config) {
     detection,
     runId,
     runWorkRoot,
-    paths: prepareOutput(config, runId, detection),
+    paths: prepareOutput(config, runId, detection, prepared.machine),
     rows: [],
     sequence: 0,
   };
   const configurations = configurationsFor(config);
+  if (configurations.length === 0) {
+    throw new Error(
+      'benchmark matrix is empty; the mixed workload requires --counts to include 10',
+    );
+  }
   const random = mulberry32(config.seed);
   try {
     for (let warmup = 0; warmup < config.warmups; warmup += 1) {

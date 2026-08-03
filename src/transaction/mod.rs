@@ -54,6 +54,7 @@ impl PreparedTransaction {
     }
 }
 
+pub(crate) use lock::acquire;
 pub(crate) use plan::{dry_run_report, project_plan};
 pub(crate) use prepare::prepare_transaction;
 pub(crate) use recovery::recover_transaction;

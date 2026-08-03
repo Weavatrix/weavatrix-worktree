@@ -2,6 +2,10 @@ use core::fmt;
 
 use crate::hash::Sha256Hash;
 
+mod operation;
+
+pub use operation::{OperationChange, OperationKind, WorktreeApplyReport, WorktreeDryRunReport};
+
 /// Deterministic before/after evidence for one repository-relative file.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileChange {

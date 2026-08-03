@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import {
@@ -11,6 +11,7 @@ import {
   LOCAL_WEAVATRIX,
   REFERENCE_ADAPTER,
   REPO_ROOT,
+  WEAVATRIX_ADAPTER,
   WEAVATRIX_MANIFEST,
   WEAVATRIX_TARGET,
 } from './constants.mjs';
@@ -30,6 +31,14 @@ function resolveBinary(explicit, local, pathCommand) {
   return existsSync(local) ? local : findOnPath(pathCommand);
 }
 
+function fileSha256(file) {
+  try {
+    return file === null ? null : sha256(readFileSync(file));
+  } catch {
+    return null;
+  }
+}
+
 function probeBinary(binary, args = ['--version']) {
   if (binary === null) {
     return { available: false, binary: null, version: null, error: 'not found' };
@@ -42,8 +51,19 @@ function probeBinary(binary, args = ['--version']) {
   return {
     available: !result.error && result.status === 0,
     binary,
+    binary_sha256: fileSha256(binary),
     version: result.status === 0 ? result.stdout.trim() : null,
     error: result.error?.message ?? (result.status === 0 ? null : result.stderr.trim()),
+  };
+}
+
+function requireVersion(probe, label, pattern, expected) {
+  if (!probe.available || probe.version === null) return probe;
+  if (pattern.test(probe.version)) return probe;
+  return {
+    ...probe,
+    available: false,
+    error: `${label} version mismatch: expected ${expected}, found ${probe.version}`,
   };
 }
 
@@ -53,27 +73,43 @@ export function detectAdapters(options = {}) {
   );
   const atomwriteBinary = resolveBinary(options['atomwrite-bin'], LOCAL_ATOMWRITE, 'atomwrite');
   const gitBinary = resolveBinary(options['git-bin'], '', 'git');
+  const weavatrix = requireVersion(
+    probeBinary(weavatrixBinary),
+    'weavatrix-worktree adapter',
+    /\(weavatrix-worktree 0\.2\.0\)$/u,
+    'weavatrix-worktree 0.2.0',
+  );
+  const atomwrite = requireVersion(
+    probeBinary(atomwriteBinary),
+    'atomwrite',
+    /^atomwrite 0\.1\.36(?:\s|$)/u,
+    'atomwrite 0.1.36',
+  );
   return {
     reference: {
       available: existsSync(REFERENCE_ADAPTER),
       binary: process.execPath,
       script: REFERENCE_ADAPTER,
+      script_sha256: fileSha256(REFERENCE_ADAPTER),
       version: commandOutput(process.execPath, [REFERENCE_ADAPTER, '--version']),
       publishable: false,
     },
     weavatrix: {
-      ...probeBinary(weavatrixBinary),
+      ...weavatrix,
+      wrapper_sha256: fileSha256(WEAVATRIX_ADAPTER),
       build_command: `cargo build --release --locked --manifest-path "${WEAVATRIX_MANIFEST}" --target-dir "${WEAVATRIX_TARGET}"`,
       worker_control: true,
     },
     atomwrite: {
-      ...probeBinary(atomwriteBinary),
-      install_command: `cargo install atomwrite --version 0.1.35 --locked --root "${LOCAL_ATOMWRITE_ROOT}"`,
+      ...atomwrite,
+      wrapper_sha256: fileSha256(ATOMWRITE_ADAPTER),
+      install_command: `cargo install atomwrite --version 0.1.36 --locked --root "${LOCAL_ATOMWRITE_ROOT}"`,
       worker_control: true,
       equivalent_to_weavatrix_recoverable_batch: false,
     },
     'git-apply': {
       ...probeBinary(gitBinary),
+      wrapper_sha256: fileSha256(GIT_APPLY_ADAPTER),
       worker_control: false,
       durability: false,
       equivalent_to_weavatrix_recoverable_batch: false,
@@ -92,12 +128,27 @@ export function adapterInvocation(adapter, detection, scenario, mode, workers, t
     return { command: process.execPath, args: [REFERENCE_ADAPTER, ...common], timeoutMs };
   }
   if (adapter === 'weavatrix') {
-    return { command: detection.weavatrix.binary, args: common, timeoutMs };
+    return {
+      command: process.execPath,
+      args: [
+        WEAVATRIX_ADAPTER,
+        '--weavatrix-bin', detection.weavatrix.binary,
+        '--timeout-ms', String(timeoutMs),
+        ...common,
+      ],
+      timeoutMs,
+    };
   }
   if (adapter === 'atomwrite') {
     return {
       command: process.execPath,
-      args: [ATOMWRITE_ADAPTER, '--atomwrite-bin', detection.atomwrite.binary, ...common],
+      args: [
+        ATOMWRITE_ADAPTER,
+        '--atomwrite-bin', detection.atomwrite.binary,
+        '--atomwrite-version', detection.atomwrite.version,
+        '--timeout-ms', String(timeoutMs),
+        ...common,
+      ],
       timeoutMs,
     };
   }
@@ -110,6 +161,7 @@ export function adapterInvocation(adapter, detection, scenario, mode, workers, t
       '--manifest', scenario.manifestPath,
       '--patch', scenario.patchPath,
       '--mode', mode,
+      '--timeout-ms', String(timeoutMs),
     ];
     return { command: process.execPath, args, timeoutMs };
   }
@@ -165,7 +217,7 @@ export function buildWeavatrix() {
 export function installAtomwrite() {
   mkdirSync(path.dirname(LOCAL_ATOMWRITE_ROOT), { recursive: true });
   const result = spawnSync('cargo', [
-    'install', 'atomwrite', '--version', '0.1.35', '--locked',
+    'install', 'atomwrite', '--version', '0.1.36', '--locked',
     '--root', LOCAL_ATOMWRITE_ROOT,
   ], {
     stdio: 'inherit',

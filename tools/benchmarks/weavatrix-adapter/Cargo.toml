@@ -7,5 +7,5 @@ publish = false
 [dependencies]
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.149"
-weavatrix-edit = { git = "https://github.com/sergii-ziborov/weavatrix-edit", rev = "f37584be0bcb28f69cc75d9e59bd300ff8964ba6" }
+weavatrix-refactor-plan = { version = "0.1.0", path = "../../../../weavatrix-refactor-plan" }
 weavatrix-worktree = { path = "../../.." }

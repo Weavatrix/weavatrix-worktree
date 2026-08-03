@@ -1,0 +1,181 @@
+name: Publish crate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: crates-io-publish
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release-context:
+    name: Validate release ref
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require main for a manual publication
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: test "${GITHUB_REF}" = "refs/heads/main"
+
+  verify-platforms:
+    name: Release test (${{ matrix.os }})
+    needs: release-context
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025, macos-15]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 2026-07-29
+        with:
+          toolchain: stable
+      - run: cargo test --locked --all-targets
+
+  verify-msrv:
+    name: Release Rust 1.88
+    needs: release-context
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 2026-07-29
+        with:
+          toolchain: 1.88.0
+      - run: cargo test --locked --all-targets
+
+  verify-benchmark-harness:
+    name: Release benchmark smoke (${{ matrix.os }})
+    needs: release-context
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 2026-07-29
+        with:
+          toolchain: stable
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 20
+      - run: node --test tools/benchmarks/tests/harness.test.mjs
+      - run: node tools/benchmarks/run.mjs self-check --output tools/benchmarks/results/release-self-check
+      - run: >-
+          cargo build --release --locked
+          --manifest-path tools/benchmarks/weavatrix-adapter/Cargo.toml
+          --target-dir tools/benchmarks/.tools/weavatrix-target
+      - run: >-
+          node tools/benchmarks/run.mjs run
+          --adapter weavatrix
+          --workloads modify,create,delete,rename,mixed
+          --counts 1,10 --workers 1
+          --modes dry-run,durable-apply --file-bytes 4096
+          --warmups 0 --repetitions 1
+          --output tools/benchmarks/results/release-weavatrix
+      - run: >-
+          node tools/benchmarks/run.mjs run
+          --adapter weavatrix --workloads rename --counts 64 --workers 8
+          --modes dry-run,durable-apply --file-bytes 1024
+          --warmups 0 --repetitions 1
+          --output tools/benchmarks/results/release-weavatrix-rename64
+      - run: >-
+          node tools/benchmarks/run.mjs run
+          --adapter git-apply
+          --workloads modify,create,delete,rename,mixed
+          --counts 1,10
+          --modes dry-run,non-durable-apply --file-bytes 4096
+          --warmups 0 --repetitions 1
+          --output tools/benchmarks/results/release-git-apply
+
+  publish:
+    name: Verify package and publish
+    needs: [release-context, verify-platforms, verify-msrv, verify-benchmark-harness]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c # 2026-07-29
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - name: Resolve and verify crate version
+        id: crate
+        shell: bash
+        run: |
+          crate_version="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          test -n "${crate_version}"
+          echo "version=${crate_version}" >> "${GITHUB_OUTPUT}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            test "${GITHUB_REF_NAME}" = "v${crate_version}"
+          fi
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked --all-targets
+      - name: Build documentation without warnings
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --no-deps
+      - run: cargo test --locked --doc
+      - name: Verify the exact publishable archive
+        run: cargo package --locked
+      - name: Check whether this immutable version already exists
+        id: registry
+        shell: bash
+        env:
+          CRATE_VERSION: ${{ steps.crate.outputs.version }}
+        run: |
+          api="https://crates.io/api/v1/crates/weavatrix-worktree/${CRATE_VERSION}"
+          status="$(curl --silent --show-error --output registry-version.json \
+            --write-out '%{http_code}' \
+            --header "User-Agent: weavatrix-worktree-release/${CRATE_VERSION}" \
+            "${api}")"
+          case "${status}" in
+            200) echo "exists=true" >> "${GITHUB_OUTPUT}" ;;
+            404) echo "exists=false" >> "${GITHUB_OUTPUT}" ;;
+            *) echo "unexpected crates.io API status: ${status}" >&2; exit 1 ;;
+          esac
+      - name: Publish to crates.io
+        if: steps.registry.outputs.exists != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish --locked
+      - name: Verify the public archive matches the checked package
+        shell: bash
+        env:
+          CRATE_VERSION: ${{ steps.crate.outputs.version }}
+        run: |
+          download="https://crates.io/api/v1/crates/weavatrix-worktree/${CRATE_VERSION}/download"
+          for attempt in $(seq 1 12); do
+            if curl --fail --location --silent --show-error \
+              --header "User-Agent: weavatrix-worktree-release/${CRATE_VERSION}" \
+              "${download}" --output registry.crate; then
+              break
+            fi
+            sleep 5
+          done
+          test -s registry.crate
+          cmp "target/package/weavatrix-worktree-${CRATE_VERSION}.crate" registry.crate
+          sha256sum "target/package/weavatrix-worktree-${CRATE_VERSION}.crate" registry.crate

@@ -5,7 +5,7 @@ use crate::{
     hash::{Sha256Hash, Sha256Hasher},
     limits::WorktreeLimits,
 };
-use weavatrix_edit::{
+use weavatrix_refactor_plan::weavatrix_edit::{
     ApplyLimits, EditError, ErrorCode as EditErrorCode, FileEdit, WriteSummary,
     prepare_edits_with_limits,
 };
@@ -160,7 +160,7 @@ fn map_edit_error(error: EditError, path: &str) -> WorktreeError {
 mod tests {
     use crate::edit::{project_file, write_projected};
     use crate::{error::WorktreeErrorCode, hash::Sha256Hash, limits::WorktreeLimits};
-    use weavatrix_edit::{FileEdit, Position, Provenance, TextEdit};
+    use weavatrix_refactor_plan::{FileEdit, Position, Provenance, TextEdit};
 
     #[test]
     fn renders_owned_output_and_hash_evidence() {

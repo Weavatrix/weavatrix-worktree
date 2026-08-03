@@ -129,9 +129,29 @@ impl Sha256Hasher {
     }
 }
 
+impl std::io::Write for Sha256Hasher {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.update(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub(crate) fn serialized_hash<T>(value: &T) -> Result<Sha256Hash, blazingly_json::Error>
+where
+    T: Serialize + ?Sized,
+{
+    let mut hasher = Sha256Hasher::new();
+    blazingly_json::to_writer(&mut hasher, value)?;
+    Ok(hasher.finish())
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::hash::{Sha256Hash, Sha256Hasher};
+    use crate::hash::{Sha256Hash, Sha256Hasher, serialized_hash};
 
     #[test]
     fn matches_standard_vectors_and_incremental_updates() {
@@ -156,5 +176,20 @@ mod tests {
                 .is_err()
         );
         assert!("00".parse::<Sha256Hash>().is_err());
+    }
+
+    #[test]
+    fn streaming_json_hash_matches_the_previous_buffered_contract() {
+        fn assert_same<T: serde::Serialize>(value: &T) {
+            let buffered = blazingly_json::to_vec(value).unwrap();
+            assert_eq!(
+                serialized_hash(value).unwrap(),
+                Sha256Hash::compute(&buffered)
+            );
+        }
+        assert_same(&weavatrix_refactor_plan::EditPlan::new(
+            "legacy",
+            Vec::new(),
+        ));
     }
 }

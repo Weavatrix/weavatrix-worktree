@@ -25,6 +25,8 @@ jobs:
           components: rustfmt, clippy
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked --all-targets -- -D warnings
+      - name: Verify publishable archive
+        run: cargo package --locked
 
   test:
     name: Test (${{ matrix.os }})
@@ -74,9 +76,13 @@ jobs:
       - run: cargo test --locked --doc
 
   benchmark-harness:
-    name: Benchmark harness
-    runs-on: ubuntu-24.04
+    name: Benchmark harness (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -95,13 +101,23 @@ jobs:
           --target-dir tools/benchmarks/.tools/weavatrix-target
       - run: >-
           node tools/benchmarks/run.mjs run
-          --adapter weavatrix --counts 1 --workers 1
+          --adapter weavatrix
+          --workloads modify,create,delete,rename,mixed
+          --counts 1,10 --workers 1
           --modes dry-run,durable-apply --file-bytes 4096
           --warmups 0 --repetitions 1
           --output tools/benchmarks/results/ci-weavatrix
       - run: >-
           node tools/benchmarks/run.mjs run
-          --adapter git-apply --counts 1
+          --adapter weavatrix --workloads rename --counts 64 --workers 8
+          --modes dry-run,durable-apply --file-bytes 1024
+          --warmups 0 --repetitions 1
+          --output tools/benchmarks/results/ci-weavatrix-rename64
+      - run: >-
+          node tools/benchmarks/run.mjs run
+          --adapter git-apply
+          --workloads modify,create,delete,rename,mixed
+          --counts 1,10
           --modes dry-run,non-durable-apply --file-bytes 4096
           --warmups 0 --repetitions 1
           --output tools/benchmarks/results/ci-git-apply
