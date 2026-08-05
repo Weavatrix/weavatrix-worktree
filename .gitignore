@@ -1,5 +1,7 @@
 /target/
 **/target/
+!src/filesystem/target/
+!src/filesystem/target/**
 tools/benchmarks/.tools/
 tools/benchmarks/results/
 /.weavatrix/worktree/

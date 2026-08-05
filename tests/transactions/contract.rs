@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use weavatrix_edit::{EditPlan, FileEdit, Position, Provenance, TextEdit, TextRange};
+use weavatrix_refactor_plan::{EditPlan, FileEdit, Position, Provenance, TextEdit, TextRange};
 use weavatrix_worktree::{
     Sha256Hash, Worktree, WorktreeErrorCode, WorktreeLimits, WorktreeOptions,
 };
@@ -225,6 +225,21 @@ fn total_artifact_and_journal_limits_are_enforced() {
         .unwrap_err();
     assert_eq!(error.code(), WorktreeErrorCode::JournalCorrupt);
     assert!(error.recovery_required());
+}
+
+#[test]
+fn legacy_edit_plan_metadata_limits_are_enforced_before_projection() {
+    let (temp, mut plan, _) = fixture(1);
+    plan.extensions.insert(
+        "payload".to_owned(),
+        blazingly_json::Value::String("x".repeat(1024 * 1024)),
+    );
+    let limits = WorktreeLimits {
+        max_extension_bytes: 128,
+        ..WorktreeLimits::default()
+    };
+
+    assert_dry_code(temp.path(), &plan, limits, WorktreeErrorCode::InvalidPlan);
 }
 
 fn plan_file(path: &str) -> FileEdit {

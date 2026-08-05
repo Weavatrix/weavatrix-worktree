@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use cap_std::fs::Permissions;
-use weavatrix_edit::{EditPlan, FileEdit, PlanLimits, portable_path_key};
+use weavatrix_refactor_plan::{EditPlan, FileEdit, PlanLimits};
 
 use crate::{
     edit::{ProjectedFile, project_file},
@@ -13,6 +13,10 @@ use crate::{
 };
 
 use super::util::{checked_usize, fs_error};
+
+mod metadata;
+
+use metadata::validate_metadata;
 
 pub(crate) struct ProjectedTarget {
     pub(crate) original_index: usize,
@@ -66,6 +70,7 @@ pub(crate) fn change_for(file: &ProjectedTarget) -> FileChange {
 
 fn validate_plan(plan: &EditPlan, options: WorktreeOptions) -> Result<(), WorktreeError> {
     let limits = options.limits;
+    validate_metadata(plan, limits)?;
     let max_total_edits = limits
         .max_files
         .checked_mul(limits.max_edits_per_file)
@@ -95,8 +100,8 @@ fn preflight(
 ) -> Result<Vec<PlannedTarget>, WorktreeError> {
     let mut files = plan.files.iter().cloned().enumerate().collect::<Vec<_>>();
     files.sort_by(|left, right| {
-        portable_path_key(&left.1.path)
-            .cmp(&portable_path_key(&right.1.path))
+        weavatrix_refactor_plan::portable_path_key(&left.1.path)
+            .cmp(&weavatrix_refactor_plan::portable_path_key(&right.1.path))
             .then_with(|| left.1.path.cmp(&right.1.path))
     });
     let mut identities = HashMap::with_capacity(files.len());

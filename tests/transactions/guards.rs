@@ -1,4 +1,4 @@
-use weavatrix_edit::{EditPlan, FileEdit, Position, Provenance, TextEdit};
+use weavatrix_refactor_plan::{EditPlan, FileEdit, Position, Provenance, TextEdit};
 use weavatrix_worktree::{Sha256Hash, WorktreeErrorCode};
 
 use crate::support::{assert_no_transaction_artifacts, find_artifact, fixture, worktree};

@@ -1,6 +1,13 @@
 import path from 'node:path';
 
-import { ALLOWED_COUNTS, ALLOWED_MODES, RESULT_ROOT } from './constants.mjs';
+import {
+  ALLOWED_COUNTS,
+  ALLOWED_MODES,
+  ALLOWED_WORKLOADS,
+  MAX_FILE_BYTES,
+  MAX_WORKERS,
+  RESULT_ROOT,
+} from './constants.mjs';
 import { timestampId } from './util.mjs';
 
 export const HELP = `Usage:
@@ -13,10 +20,11 @@ export const HELP = `Usage:
 
 Run options:
   --adapter NAME          reference, weavatrix, atomwrite, or git-apply
+  --workloads LIST        modify,create,delete,rename,mixed (default all)
   --counts LIST           comma list from 1,5,10,64 (default all)
-  --workers LIST          comma list (default 1,2,4,8; invalid for git-apply)
+  --workers LIST          comma list <=64 (default 1,2,4,8; invalid for git-apply)
   --modes LIST            adapter-specific modes (default both supported modes)
-  --file-bytes N          exact bytes per UTF-8 fixture file (default 65536)
+  --file-bytes N          exact bytes, 1024..1048576, per UTF-8 file (default 65536)
   --warmups N             retained warmups per configuration (default 5)
   --repetitions N         recorded samples per configuration (default 30)
   --timeout-ms N          subprocess timeout (default 120000)
@@ -26,6 +34,19 @@ Run options:
   --atomwrite-bin PATH    explicit atomwrite binary
   --git-bin PATH          explicit Git binary
 `;
+
+export const RUN_OPTION_NAMES = new Set([
+  'adapter', 'workloads', 'counts', 'workers', 'modes', 'file-bytes',
+  'warmups', 'repetitions', 'timeout-ms', 'seed', 'output',
+  'weavatrix-bin', 'atomwrite-bin', 'git-bin',
+]);
+
+export function rejectUnknownOptions(options, allowed, command) {
+  const unknown = Object.keys(options).filter((name) => !allowed.has(name));
+  if (unknown.length > 0) {
+    throw new Error(`${command} does not support option(s): ${unknown.map((name) => `--${name}`).join(', ')}`);
+  }
+}
 
 export function parseOptions(argv) {
   const options = {};
@@ -87,6 +108,16 @@ export function validateRunOptions(options, overrides = {}) {
       throw new Error(`unsupported --counts value: ${count}`);
     }
   }
+  const workloads = overrides.workloads
+    ?? listOption(options, 'workloads', 'modify,create,delete,rename,mixed');
+  for (const workload of workloads) {
+    if (!ALLOWED_WORKLOADS.has(workload)) {
+      throw new Error(`unsupported --workloads value: ${workload}`);
+    }
+  }
+  if (workloads.includes('mixed') && !counts.includes(10)) {
+    throw new Error('the mixed workload requires --counts to include 10');
+  }
   const workerless = adapter === 'git-apply';
   if (workerless && (options.workers !== undefined || overrides.workers !== undefined)) {
     throw new Error('--workers is not supported by git-apply');
@@ -94,6 +125,9 @@ export function validateRunOptions(options, overrides = {}) {
   const requestedWorkers = workerless
     ? []
     : (overrides.workers ?? integerListOption(options, 'workers', '1,2,4,8'));
+  if (requestedWorkers.some((workers) => workers > MAX_WORKERS)) {
+    throw new Error(`--workers values must not exceed ${MAX_WORKERS}`);
+  }
   const defaultModes = workerless
     ? 'dry-run,non-durable-apply'
     : 'dry-run,durable-apply';
@@ -111,13 +145,18 @@ export function validateRunOptions(options, overrides = {}) {
   }
   const output = path.resolve(overrides.output ?? options.output
     ?? path.join(RESULT_ROOT, `${timestampId()}-${adapter}`));
+  const fileBytes = overrides.fileBytes ?? integerOption(options, 'file-bytes', 65_536, 1_024);
+  if (fileBytes > MAX_FILE_BYTES) {
+    throw new Error(`--file-bytes must not exceed ${MAX_FILE_BYTES}`);
+  }
   return {
     adapter,
+    workloads,
     counts,
     requested_workers: requestedWorkers,
     workers: workerless ? [null] : requestedWorkers,
     modes,
-    file_bytes: overrides.fileBytes ?? integerOption(options, 'file-bytes', 65_536, 1_024),
+    file_bytes: fileBytes,
     warmups: overrides.warmups ?? integerOption(options, 'warmups', 5, 0),
     repetitions: overrides.repetitions ?? integerOption(options, 'repetitions', 30, 1),
     timeout_ms: overrides.timeoutMs ?? integerOption(options, 'timeout-ms', 120_000, 1),

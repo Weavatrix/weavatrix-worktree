@@ -3,7 +3,7 @@ use std::{io, path::Path};
 use cap_fs_ext::{DirExt, MetadataExt};
 use cap_std::{ambient_authority, fs::Dir};
 
-use super::{ControlDir, TargetAccess};
+use super::{ControlDir, TargetAccess, sync_directory};
 
 pub(crate) struct FsRoot {
     dir: Dir,
@@ -32,6 +32,26 @@ impl FsRoot {
         TargetAccess::open(&self.dir, self.device, path)
     }
 
+    pub(crate) fn try_clone(&self) -> io::Result<Self> {
+        Ok(Self {
+            dir: self.dir.try_clone()?,
+            device: self.device,
+        })
+    }
+
+    /// Re-resolves a target parent from the root and compares its identity.
+    pub(crate) fn revalidate_parent(&self, target: &TargetAccess) -> io::Result<()> {
+        target.verify_parent_handle()?;
+        let reopened = self.open_target(target.path())?;
+        reopened.verify_parent_handle()?;
+        if reopened.parent_identity() != target.parent_identity() {
+            return Err(invalid(
+                "target parent path now resolves to another directory",
+            ));
+        }
+        Ok(())
+    }
+
     pub(crate) fn open_control(&self, create: bool) -> io::Result<Option<ControlDir>> {
         let weavatrix = open_or_create_child(&self.dir, ".weavatrix", create)?;
         let Some(weavatrix) = weavatrix else {
@@ -43,19 +63,25 @@ impl FsRoot {
 }
 
 fn open_or_create_child(parent: &Dir, name: &str, create: bool) -> io::Result<Option<Dir>> {
-    match parent.open_dir_nofollow(name) {
-        Ok(dir) => Ok(Some(dir)),
+    let child = match parent.open_dir_nofollow(name) {
+        Ok(dir) => Some(dir),
         Err(error) if error.kind() == io::ErrorKind::NotFound && create => {
             match parent.create_dir(name) {
                 Ok(()) => {}
                 Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {}
                 Err(error) => return Err(error),
             }
-            parent.open_dir_nofollow(name).map(Some)
+            Some(parent.open_dir_nofollow(name)?)
         }
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(error),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+    if create && child.is_some() {
+        // Persist each namespace edge (`root/.weavatrix` and then
+        // `.weavatrix/worktree`) before a transaction may depend on it.
+        sync_directory(parent)?;
     }
+    Ok(child)
 }
 
 #[cfg(windows)]

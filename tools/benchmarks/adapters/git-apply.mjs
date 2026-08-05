@@ -5,7 +5,8 @@ import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const SCHEMA = 'weavatrix.worktree-benchmark-adapter.v1';
+const SCHEMA = 'weavatrix.worktree-benchmark-adapter.v2';
+const MANIFEST_SCHEMA = 'weavatrix.worktree-benchmark-manifest.v2';
 
 function parseArgs(argv) {
   const values = new Map();
@@ -37,6 +38,13 @@ function required(values, name) {
   return value;
 }
 
+function childTimeout(values) {
+  const outer = Number(required(values, 'timeout-ms'));
+  if (!Number.isSafeInteger(outer) || outer < 1) throw new Error('--timeout-ms is invalid');
+  const grace = Math.min(1_000, Math.max(1, Math.floor(outer / 10)));
+  return Math.max(1, outer - grace);
+}
+
 async function run(values) {
   const binary = path.resolve(required(values, 'git-bin'));
   const workspace = path.resolve(required(values, 'workspace'));
@@ -52,12 +60,13 @@ async function run(values) {
     readFile(patchPath),
   ]);
   const manifest = JSON.parse(manifestText);
-  if (manifest.schema !== 'weavatrix.worktree-benchmark-manifest.v1') {
+  if (manifest.schema !== MANIFEST_SCHEMA) {
     throw new Error(`unsupported manifest schema: ${String(manifest.schema)}`);
   }
-  if (!Array.isArray(manifest.files)
-    || manifest.files.length !== Number(manifest.file_count)) {
-    throw new Error('manifest file count mismatch');
+  if (!Array.isArray(manifest.operations)
+    || manifest.operations.length !== Number(manifest.operation_count)
+    || manifest.operations.length === 0) {
+    throw new Error('manifest operation count mismatch');
   }
   const relativeWorkspace = path.relative(repositoryRoot, workspace);
   if (relativeWorkspace.length === 0
@@ -87,7 +96,7 @@ async function run(values) {
     input: patch,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
-    timeout: 120_000,
+    timeout: childTimeout(values),
     windowsHide: true,
     env: gitEnvironment,
   });
@@ -101,7 +110,9 @@ async function run(values) {
     ok,
     adapter: 'git-apply',
     mode,
-    files: manifest.files.length,
+    workload: manifest.workload,
+    operations: manifest.operation_count,
+    touched_paths: manifest.touched_path_count,
     workers_requested: null,
     workers_effective: null,
     worker_control: 'NOT_SUPPORTED_BY_GIT_APPLY',
@@ -112,6 +123,7 @@ async function run(values) {
     underlying_stderr: result.stderr.slice(0, 16_384),
     patch_sha256: createHash('sha256').update(patch).digest('hex'),
     stale_guard: 'UNIFIED_DIFF_CONTEXT_WITHOUT_FULL_FILE_HASH_CAS',
+    capability_class: 'PATCH_MODIFY_CREATE_DELETE_AND_RENAME',
     repository_discovery: 'EXPLICIT_HARNESS_ROOT_WITH_NO_INDEX_AND_DIRECTORY_PREFIX',
     partial_apply_policy: 'DEFAULT_WHOLE_PATCH_ON_HUNK_APPLICABILITY_ERROR_NO_REJECT',
     durability_contract: mode === 'dry-run'

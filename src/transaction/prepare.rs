@@ -1,9 +1,9 @@
-use weavatrix_edit::EditPlan;
+use weavatrix_refactor_plan::EditPlan;
 
 use crate::{
     error::{TransactionPhase, WorktreeError, WorktreeErrorCode},
     filesystem::FsRoot,
-    hash::Sha256Hash,
+    hash::serialized_hash,
     journal::{FinishOutcome, JournalRecord, JournalWriter},
     options::WorktreeOptions,
 };
@@ -29,6 +29,16 @@ pub(crate) fn prepare_transaction(
         .open_journal()
         .map_err(open_journal_error)?
         .is_some()
+        || locked
+            .control
+            .open_operation_journal()
+            .map_err(open_journal_error)?
+            .is_some()
+        || locked
+            .control
+            .open_undo_journal()
+            .map_err(open_journal_error)?
+            .is_some()
     {
         return Err(WorktreeError::new(
             WorktreeErrorCode::RecoveryRequired,
@@ -103,7 +113,7 @@ fn append_header(
     plan: &EditPlan,
     transaction_id: &str,
 ) -> Result<(), WorktreeError> {
-    let encoded = blazingly_json::to_vec(plan).map_err(|error| {
+    let contract_hash = serialized_hash(plan).map_err(|error| {
         WorktreeError::with_source(
             WorktreeErrorCode::InvalidPlan,
             TransactionPhase::Prepare,
@@ -114,7 +124,7 @@ fn append_header(
     journal
         .append(&JournalRecord::Header {
             transaction_id: transaction_id.to_owned(),
-            contract_hash: Sha256Hash::compute(&encoded).to_string(),
+            contract_hash: contract_hash.to_string(),
             file_count: u32::try_from(plan.files.len()).map_err(|_| {
                 WorktreeError::new(
                     WorktreeErrorCode::TransactionTooLarge,
@@ -181,10 +191,20 @@ fn random_id() -> Result<String, WorktreeError> {
 }
 
 fn open_journal_error(error: std::io::Error) -> WorktreeError {
-    WorktreeError::with_source(
-        WorktreeErrorCode::Io,
+    let code = if error.kind() == std::io::ErrorKind::InvalidData {
+        WorktreeErrorCode::JournalCorrupt
+    } else {
+        WorktreeErrorCode::Io
+    };
+    let mapped = WorktreeError::with_source(
+        code,
         TransactionPhase::Lock,
         "failed to inspect pending recovery state",
         error,
-    )
+    );
+    if code == WorktreeErrorCode::JournalCorrupt {
+        mapped.requiring_recovery()
+    } else {
+        mapped
+    }
 }

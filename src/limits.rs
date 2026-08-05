@@ -8,6 +8,12 @@ pub const ABSOLUTE_MAX_WORKERS: usize = 16;
 /// Absolute journal ceiling retained even when callers customize limits.
 pub const ABSOLUTE_MAX_JOURNAL_BYTES: usize = 16 * MIB;
 
+/// Absolute ceiling for retained undo receipts in one worktree.
+pub const ABSOLUTE_MAX_UNDO_RECEIPTS: usize = 1_024;
+
+/// Absolute cumulative byte ceiling for retained rollback artifacts.
+pub const ABSOLUTE_MAX_UNDO_BYTES: usize = 2 * 1024 * MIB;
+
 /// Hard resource ceilings for one worktree transaction.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WorktreeLimits {
@@ -19,6 +25,15 @@ pub struct WorktreeLimits {
     pub max_total_output_bytes: usize,
     pub max_total_artifact_bytes: usize,
     pub max_journal_bytes: usize,
+    pub max_undo_receipts: usize,
+    pub max_total_undo_bytes: usize,
+    pub max_operation_bytes: usize,
+    pub max_extension_bytes: usize,
+    pub max_extension_nodes: usize,
+    pub max_extension_depth: usize,
+    pub max_evidence_entries: usize,
+    pub max_evidence_text_bytes: usize,
+    pub max_code_bytes: usize,
     pub max_workers: usize,
 }
 
@@ -33,6 +48,15 @@ impl Default for WorktreeLimits {
             max_total_output_bytes: 256 * MIB,
             max_total_artifact_bytes: 384 * MIB,
             max_journal_bytes: MIB,
+            max_undo_receipts: 32,
+            max_total_undo_bytes: 384 * MIB,
+            max_operation_bytes: 4_096,
+            max_extension_bytes: 256 * 1024,
+            max_extension_nodes: 4_096,
+            max_extension_depth: 32,
+            max_evidence_entries: 10_000,
+            max_evidence_text_bytes: 8 * MIB,
+            max_code_bytes: 256,
             max_workers: 16,
         }
     }
@@ -50,6 +74,15 @@ impl WorktreeLimits {
             ("max_total_output_bytes", self.max_total_output_bytes),
             ("max_total_artifact_bytes", self.max_total_artifact_bytes),
             ("max_journal_bytes", self.max_journal_bytes),
+            ("max_undo_receipts", self.max_undo_receipts),
+            ("max_total_undo_bytes", self.max_total_undo_bytes),
+            ("max_operation_bytes", self.max_operation_bytes),
+            ("max_extension_bytes", self.max_extension_bytes),
+            ("max_extension_nodes", self.max_extension_nodes),
+            ("max_extension_depth", self.max_extension_depth),
+            ("max_evidence_entries", self.max_evidence_entries),
+            ("max_evidence_text_bytes", self.max_evidence_text_bytes),
+            ("max_code_bytes", self.max_code_bytes),
             ("max_workers", self.max_workers),
         ] {
             if value == 0 {
@@ -65,6 +98,16 @@ impl WorktreeLimits {
         if self.max_journal_bytes > ABSOLUTE_MAX_JOURNAL_BYTES {
             return Err(invalid(format!(
                 "max_journal_bytes may not exceed {ABSOLUTE_MAX_JOURNAL_BYTES}"
+            )));
+        }
+        if self.max_undo_receipts > ABSOLUTE_MAX_UNDO_RECEIPTS {
+            return Err(invalid(format!(
+                "max_undo_receipts may not exceed {ABSOLUTE_MAX_UNDO_RECEIPTS}"
+            )));
+        }
+        if self.max_total_undo_bytes > ABSOLUTE_MAX_UNDO_BYTES {
+            return Err(invalid(format!(
+                "max_total_undo_bytes may not exceed {ABSOLUTE_MAX_UNDO_BYTES}"
             )));
         }
         if self.max_total_source_bytes < self.max_source_bytes_per_file {

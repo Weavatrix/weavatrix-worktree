@@ -6,6 +6,7 @@ export const REPO_ROOT = path.resolve(SCRIPT_DIR, '..', '..');
 export const WORK_ROOT = path.join(SCRIPT_DIR, '.work');
 export const RESULT_ROOT = path.join(SCRIPT_DIR, 'results');
 export const REFERENCE_ADAPTER = path.join(SCRIPT_DIR, 'adapters', 'reference.mjs');
+export const WEAVATRIX_ADAPTER = path.join(SCRIPT_DIR, 'adapters', 'weavatrix.mjs');
 export const ATOMWRITE_ADAPTER = path.join(SCRIPT_DIR, 'adapters', 'atomwrite.mjs');
 export const GIT_APPLY_ADAPTER = path.join(SCRIPT_DIR, 'adapters', 'git-apply.mjs');
 export const WEAVATRIX_MANIFEST = path.join(SCRIPT_DIR, 'weavatrix-adapter', 'Cargo.toml');
@@ -25,17 +26,23 @@ export const LOCAL_WEAVATRIX = path.join(
     : 'weavatrix-worktree-bench-adapter',
 );
 
-export const SAMPLE_SCHEMA = 'weavatrix.worktree-benchmark-sample.v1';
-export const MANIFEST_SCHEMA = 'weavatrix.worktree-benchmark-manifest.v1';
-export const ADAPTER_SCHEMA = 'weavatrix.worktree-benchmark-adapter.v1';
+export const SAMPLE_SCHEMA = 'weavatrix.worktree-benchmark-sample.v2';
+export const MANIFEST_SCHEMA = 'weavatrix.worktree-benchmark-manifest.v2';
+export const ADAPTER_SCHEMA = 'weavatrix.worktree-benchmark-adapter.v2';
 export const ALLOWED_COUNTS = new Set([1, 5, 10, 64]);
 export const ALLOWED_MODES = new Set(['dry-run', 'durable-apply', 'non-durable-apply']);
+export const ALLOWED_WORKLOADS = new Set(['modify', 'create', 'delete', 'rename', 'mixed']);
+export const MAX_FILE_BYTES = 1_048_576;
+export const MAX_WORKERS = 64;
 export const CSV_FIELDS = [
   'schema', 'run_id', 'sample_id', 'timestamp_utc', 'adapter', 'adapter_version',
   'track', 'mode', 'durability_contract', 'equivalent_to_weavatrix_recoverable_batch',
-  'file_count', 'file_bytes', 'workers_requested', 'workers_effective', 'warmup',
+  'workload', 'operation_count', 'touched_path_count', 'file_bytes',
+  'workers_requested', 'workers_effective', 'effective_max_files',
+  'effective_max_paths', 'warmup',
   'iteration', 'elapsed_ns', 'elapsed_ms', 'exit_code', 'signal', 'timed_out',
   'gate_adapter_exit', 'gate_adapter_json', 'gate_adapter_report_count',
-  'gate_content_hashes', 'gate_artifact_cleanup', 'gate_all',
-  'unexpected_artifact_count', 'observed_file_count',
+  'gate_adapter_resource_budget',
+  'gate_tree_state', 'gate_artifact_cleanup', 'gate_all',
+  'unexpected_artifact_count', 'observed_entry_count',
 ];

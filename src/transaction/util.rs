@@ -10,7 +10,7 @@ pub(crate) fn fs_error(
     source: io::Error,
 ) -> WorktreeError {
     let detail = source.to_string();
-    let code = if detail.contains("reserved") {
+    let code = if detail.contains("reserved") || detail.contains("state namespace") {
         WorktreeErrorCode::ReservedPath
     } else if detail.contains("symbolic link") || detail.contains("reparse") {
         WorktreeErrorCode::SymlinkNotAllowed

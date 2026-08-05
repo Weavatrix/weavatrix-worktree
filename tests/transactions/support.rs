@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use tempfile::TempDir;
-use weavatrix_edit::{EditPlan, FileEdit, Position, Provenance, TextEdit};
+use weavatrix_refactor_plan::{EditPlan, FileEdit, Position, Provenance, TextEdit};
 use weavatrix_worktree::{Sha256Hash, Worktree, WorktreeOptions};
 
 pub(crate) fn fixture(count: usize) -> (TempDir, EditPlan, Vec<(String, String)>) {

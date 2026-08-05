@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use tempfile::TempDir;
-use weavatrix_edit::{EditPlan, FileEdit, Position, Provenance, TextEdit};
+use weavatrix_refactor_plan::{EditPlan, FileEdit, Position, Provenance, TextEdit};
 
 use crate::{
     error::WorktreeError,
