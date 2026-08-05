@@ -396,17 +396,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "serde_jcs"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3a60f3fda61525e439ef6d67422118f11e986566997d9021c56867ad814a0aa"
-dependencies = [
- "ryu-js",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "serde_json"
 version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -508,9 +497,9 @@ dependencies = [
 
 [[package]]
 name = "weavatrix-edit"
-version = "0.1.3"
+version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "370710d9b18d00b2f4b69f1a6ebf801a5d0953fa457ef921d21c8badaa476b5d"
+checksum = "ce3cfad04b3203951a583f1c6a3264069cf6ace04316e805e82562bec97480da"
 dependencies = [
  "blazingly-json",
  "serde",
@@ -519,10 +508,12 @@ dependencies = [
 [[package]]
 name = "weavatrix-refactor-plan"
 version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6fdffcd1b572779f40589add25dba88d256f28cd0c9116c52959720af5f55640"
 dependencies = [
  "blazingly-json",
+ "ryu-js",
  "serde",
- "serde_jcs",
  "serde_json",
  "sha2",
  "time",

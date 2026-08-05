@@ -148,7 +148,8 @@ jobs:
           CRATE_VERSION: ${{ steps.crate.outputs.version }}
         run: |
           api="https://crates.io/api/v1/crates/weavatrix-worktree/${CRATE_VERSION}"
-          status="$(curl --silent --show-error --output registry-version.json \
+          # Written outside the checkout: `cargo publish` refuses a dirty tree.
+          status="$(curl --silent --show-error --output "${RUNNER_TEMP}/registry-version.json" \
             --write-out '%{http_code}' \
             --header "User-Agent: weavatrix-worktree-release/${CRATE_VERSION}" \
             "${api}")"
@@ -168,14 +169,15 @@ jobs:
           CRATE_VERSION: ${{ steps.crate.outputs.version }}
         run: |
           download="https://crates.io/api/v1/crates/weavatrix-worktree/${CRATE_VERSION}/download"
+          archive="${RUNNER_TEMP}/registry.crate"
           for attempt in $(seq 1 12); do
             if curl --fail --location --silent --show-error \
               --header "User-Agent: weavatrix-worktree-release/${CRATE_VERSION}" \
-              "${download}" --output registry.crate; then
+              "${download}" --output "${archive}"; then
               break
             fi
             sleep 5
           done
-          test -s registry.crate
-          cmp "target/package/weavatrix-worktree-${CRATE_VERSION}.crate" registry.crate
-          sha256sum "target/package/weavatrix-worktree-${CRATE_VERSION}.crate" registry.crate
+          test -s "${archive}"
+          cmp "target/package/weavatrix-worktree-${CRATE_VERSION}.crate" "${archive}"
+          sha256sum "target/package/weavatrix-worktree-${CRATE_VERSION}.crate" "${archive}"
