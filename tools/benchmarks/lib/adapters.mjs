@@ -57,6 +57,15 @@ function probeBinary(binary, args = ['--version']) {
   };
 }
 
+function rootCrateVersion() {
+  const manifest = readFileSync(path.join(REPO_ROOT, 'Cargo.toml'), 'utf8');
+  const version = /^version = "([^"]+)"$/mu.exec(manifest)?.[1];
+  if (version === undefined) {
+    throw new Error('cannot read the crate version from Cargo.toml');
+  }
+  return version;
+}
+
 function requireVersion(probe, label, pattern, expected) {
   if (!probe.available || probe.version === null) return probe;
   if (pattern.test(probe.version)) return probe;
@@ -73,11 +82,12 @@ export function detectAdapters(options = {}) {
   );
   const atomwriteBinary = resolveBinary(options['atomwrite-bin'], LOCAL_ATOMWRITE, 'atomwrite');
   const gitBinary = resolveBinary(options['git-bin'], '', 'git');
+  const crateVersion = rootCrateVersion();
   const weavatrix = requireVersion(
     probeBinary(weavatrixBinary),
     'weavatrix-worktree adapter',
-    /\(weavatrix-worktree 0\.2\.0\)$/u,
-    'weavatrix-worktree 0.2.0',
+    new RegExp(`\\(weavatrix-worktree ${crateVersion.replaceAll('.', '\\.')}\\)$`, 'u'),
+    `weavatrix-worktree ${crateVersion}`,
   );
   const atomwrite = requireVersion(
     probeBinary(atomwriteBinary),
