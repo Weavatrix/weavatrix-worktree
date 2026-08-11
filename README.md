@@ -116,6 +116,9 @@ the v0.2 transaction contract.
 `apply_plan_retained` (or `commit_retained` on a prepared transaction) commits
 a plan while keeping each replaced file's exact backup and writing a
 checksummed `undo-<transaction>.json` receipt under `.weavatrix/worktree`. The
+retained backup files are moved into that state directory after the durable
+commit record, so successful applies leave no `.weavatrix-*.backup` files
+beside source files. Interrupted moves are completed idempotently by recovery.
 returned `RetainedApplyReport` carries the `UndoId`; `undo_receipts()` and
 `undo_usage()` inspect the bounded store (32 receipts / 384 MiB by default),
 `rollback_undo(&id)` restores the exact before state, and `discard_undo(&id)`
@@ -184,8 +187,10 @@ transitions, path protections, durability boundaries, and metadata limits.
 Plans and paths fail closed when they contain path aliases, reserved paths,
 symlink/reparse traversal, cross-filesystem parents, hard links, read-only or
 special files, invalid UTF-8, stale SHA-256 evidence, conflicting edits, or
-resource-budget overflow. Stage and backup files are created exclusively next
-to their target. Create uses deterministic writable `0o644` (`0o755` when
+resource-budget overflow. Active-transaction stage and backup files are
+created exclusively next to their target; retained backups move into the
+state directory only after a durable commit. Create uses deterministic
+writable `0o644` (`0o755` when
 explicitly executable); modify and rename preserve portable permissions.
 Version 0.2 does not
 promise ownership, ACL, xattr, alternate-stream, or sparse-layout cloning.

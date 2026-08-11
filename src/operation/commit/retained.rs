@@ -98,6 +98,7 @@ fn finish_retained(transaction: &mut PreparedWorktreeTransaction) -> Result<(), 
             .requiring_recovery()
         })?;
     cleanup_stages(transaction)?;
+    retain_backups(transaction)?;
     transaction
         .control
         .remove_operation_journal()
@@ -112,7 +113,39 @@ fn finish_retained(transaction: &mut PreparedWorktreeTransaction) -> Result<(), 
         })
 }
 
-/// Removes stage artifacts only; backup artifacts stay retained for undo.
+/// Moves exact rollback evidence into the state directory after the durable
+/// committed record. The journal remains until every move and directory sync
+/// completes, so recovery can finish a partially relocated set.
+fn retain_backups(transaction: &PreparedWorktreeTransaction) -> Result<(), WorktreeError> {
+    for (index, path) in transaction.paths.iter().enumerate() {
+        let (Some(name), Some(expected)) = (path.backup_name.as_deref(), path.backup) else {
+            continue;
+        };
+        transaction
+            .control
+            .retain_backup_from(
+                &path.access,
+                name,
+                expected,
+                transaction.options.limits.max_source_bytes_per_file,
+            )
+            .map_err(|error| {
+                WorktreeError::with_source(
+                    WorktreeErrorCode::RecoveryRequired,
+                    TransactionPhase::Cleanup,
+                    "failed to move retained backup into the state directory",
+                    error,
+                )
+                .at_path(path.path.clone())
+                .at_file(index)
+                .in_transaction(transaction.transaction_id.clone())
+                .requiring_recovery()
+            })?;
+    }
+    Ok(())
+}
+
+/// Removes stage artifacts only; backups move to the state directory next.
 fn cleanup_stages(transaction: &PreparedWorktreeTransaction) -> Result<(), WorktreeError> {
     for (index, path) in transaction.paths.iter().enumerate() {
         let Some(stage) = &path.stage_name else {

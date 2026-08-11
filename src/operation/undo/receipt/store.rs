@@ -2,7 +2,7 @@ use std::io::{Read, Seek, SeekFrom};
 
 use crate::{
     error::{TransactionPhase, WorktreeError, WorktreeErrorCode},
-    filesystem::{ControlDir, FsRoot, SlotEvidence},
+    filesystem::{ControlDir, SlotEvidence},
     hash::serialized_hash,
     options::WorktreeOptions,
 };
@@ -56,7 +56,6 @@ pub(in crate::operation) fn store_usage(
 pub(in crate::operation) fn discard(
     control: &ControlDir,
     receipt: &StoredReceipt,
-    root: &FsRoot,
     options: WorktreeOptions,
 ) -> Result<usize, WorktreeError> {
     let mut removed = 0;
@@ -67,17 +66,8 @@ pub(in crate::operation) fn discard(
         let expected = path
             .backup
             .ok_or_else(|| corrupt("receipt backup evidence is missing"))?;
-        let access = root.open_target(&path.path).map_err(|error| {
-            undo_io(
-                TransactionPhase::Cleanup,
-                "failed to reopen undo artifact parent",
-                error,
-            )
-            .at_path(path.path.clone())
-            .at_file(position)
-        })?;
-        let actual = access
-            .artifact_evidence(name, options.limits.max_source_bytes_per_file)
+        let actual = control
+            .backup_evidence(name, options.limits.max_source_bytes_per_file)
             .map_err(|error| {
                 undo_io(
                     TransactionPhase::Cleanup,
@@ -92,7 +82,7 @@ pub(in crate::operation) fn discard(
                 .at_path(path.path.clone())
                 .at_file(position));
         }
-        removed += usize::from(access.remove_artifact(name).map_err(|error| {
+        removed += usize::from(control.remove_backup(name).map_err(|error| {
             undo_io(
                 TransactionPhase::Cleanup,
                 "failed to remove exact undo artifact",

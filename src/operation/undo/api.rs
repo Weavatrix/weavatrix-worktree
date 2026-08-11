@@ -82,7 +82,7 @@ pub(crate) fn undo_discard(
         return Err(not_found());
     };
     let stored = inspect(&session.control, id, options)?;
-    discard(&session.control, &stored, root, options)
+    discard(&session.control, &stored, options)
 }
 
 fn open_session(root: &FsRoot) -> Result<Option<UndoSession>, WorktreeError> {

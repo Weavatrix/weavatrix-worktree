@@ -24,12 +24,12 @@ pub(in crate::operation) fn rollback(
     receipt: &StoredReceipt,
     options: WorktreeOptions,
 ) -> Result<UndoRollbackReport, WorktreeError> {
-    let accesses = verify_receipt_state(root, receipt, options)?;
+    let accesses = verify_receipt_state(control, root, receipt, options)?;
     let rollback_transaction_id = crate::operation::random_id()?;
     let mut journal = open_journal(control, receipt, &rollback_transaction_id, options)?;
     for (position, path) in receipt.paths().iter().enumerate().rev() {
         append(&mut journal, &Record::RollbackIntent { index: path.index })?;
-        restore_path(&accesses[position], path, options)
+        restore_path(control, &accesses[position], path, options)
             .map_err(|error| error.in_transaction(rollback_transaction_id.clone()))?;
         append(&mut journal, &Record::RolledBack { index: path.index })?;
     }
@@ -51,6 +51,7 @@ pub(in crate::operation) fn rollback(
 /// Restores one receipt path from the exact committed state to its before
 /// state, consuming the retained backup artifact where one exists.
 pub(super) fn restore_path(
+    control: &ControlDir,
     access: &TargetAccess,
     path: &ReceiptPath,
     options: WorktreeOptions,
@@ -65,12 +66,16 @@ pub(super) fn restore_path(
                 .as_deref()
                 .ok_or_else(|| receipt_logic(path, "retained path lacks its backup name"))?;
             match current_state(access, path, options)? {
-                SlotEvidence::Absent => access.install_absent_from(backup).map_err(|error| {
+                SlotEvidence::Absent => control
+                    .install_absent_target_from_backup(access, backup)
+                    .map_err(|error| {
                     restore_error(path, "failed to reinstall the retained backup", error)
                 })?,
-                actual if actual == path.after => access.replace_from(backup).map_err(|error| {
-                    restore_error(path, "failed to restore the retained backup", error)
-                })?,
+                actual if actual == path.after => control
+                    .replace_target_from_backup(access, backup)
+                    .map_err(|error| {
+                        restore_error(path, "failed to restore the retained backup", error)
+                    })?,
                 SlotEvidence::Present(_) => {
                     return Err(foreign(
                         path,

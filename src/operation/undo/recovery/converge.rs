@@ -2,7 +2,7 @@ use std::io;
 
 use crate::{
     error::{TransactionPhase, WorktreeError, WorktreeErrorCode},
-    filesystem::{SlotEvidence, TargetAccess},
+    filesystem::{ControlDir, SlotEvidence, TargetAccess},
     options::WorktreeOptions,
 };
 
@@ -16,6 +16,7 @@ use crate::operation::undo::rollback::{
 /// Verifies that a journal finished as rolled back left every exact before
 /// state in place before the receipt and journal are removed.
 pub(super) fn verify_finished(
+    _control: &ControlDir,
     receipt: &StoredReceipt,
     accesses: &[TargetAccess],
     replay: &UndoReplay,
@@ -44,6 +45,7 @@ pub(super) fn verify_finished(
 
 /// Idempotently completes an interrupted undo in reverse index order.
 pub(super) fn complete(
+    control: &ControlDir,
     receipt: &StoredReceipt,
     accesses: &[TargetAccess],
     replay: &UndoReplay,
@@ -52,20 +54,21 @@ pub(super) fn complete(
 ) -> Result<usize, WorktreeError> {
     let mut removed = 0;
     for (position, path) in receipt.paths().iter().enumerate().rev() {
-        removed += converge_path(&accesses[position], path, replay, writer, options)?;
+        removed += converge_path(control, &accesses[position], path, replay, writer, options)?;
     }
     Ok(removed)
 }
 
 fn converge_path(
+    control: &ControlDir,
     access: &TargetAccess,
     path: &ReceiptPath,
     replay: &UndoReplay,
     writer: &mut Writer,
     options: WorktreeOptions,
 ) -> Result<usize, WorktreeError> {
-    if linked_restore_is_exact(access, path, replay, options)? {
-        return finish_linked_restore(access, path, replay, writer, options);
+    if linked_restore_is_exact(control, access, path, replay, options)? {
+        return finish_linked_restore(control, access, path, replay, writer, options);
     }
     let actual = current(access, path, replay, options)?;
     let restored = restored(path, replay)?;
@@ -104,13 +107,14 @@ fn converge_path(
             &Record::RollbackIntent { index: path.index },
         )?;
     }
-    restore_path(access, path, options)
+    restore_path(control, access, path, options)
         .map_err(|error| error.in_transaction(replay.rollback_id.clone()))?;
     record(writer, replay, &Record::RolledBack { index: path.index })?;
     Ok(consumed(path))
 }
 
 fn finish_linked_restore(
+    control: &ControlDir,
     access: &TargetAccess,
     path: &ReceiptPath,
     replay: &UndoReplay,
@@ -131,8 +135,8 @@ fn finish_linked_restore(
             "linked undo restore lacks its backup",
         ));
     };
-    access
-        .finish_linked_install(name, backup.identity)
+    control
+        .finish_linked_restore(access, name, backup.identity)
         .map_err(|error| {
             path_io(
                 path,
@@ -148,6 +152,7 @@ fn finish_linked_restore(
 }
 
 fn linked_restore_is_exact(
+    control: &ControlDir,
     access: &TargetAccess,
     path: &ReceiptPath,
     replay: &UndoReplay,
@@ -158,11 +163,11 @@ fn linked_restore_is_exact(
     else {
         return Ok(false);
     };
-    match access.same_file_as_artifact(name) {
+    match control.same_file_as_target(access, name) {
         Ok(false) => Ok(false),
         Ok(true) => {
-            let evidence = access
-                .linked_artifact_evidence(name, state_bytes(options))
+            let evidence = control
+                .linked_backup_evidence(access, name, state_bytes(options))
                 .map_err(|error| {
                     path_io(
                         path,

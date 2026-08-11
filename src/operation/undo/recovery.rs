@@ -51,7 +51,7 @@ pub(in crate::operation) fn recover_undo(
     replay.bind(&receipt)?;
     let accesses = open_targets(root, &receipt, &replay)?;
     if replay.finished {
-        converge::verify_finished(&receipt, &accesses, &replay, options)?;
+        converge::verify_finished(control, &receipt, &accesses, &replay, options)?;
         consume(control, &replay, receipt.id())?;
         return Ok(report(&replay, RecoveryAction::RolledBack, 0));
     }
@@ -70,7 +70,7 @@ pub(in crate::operation) fn recover_undo(
             .in_transaction(replay.rollback_id.clone())
             .requiring_recovery()
         })?;
-    let removed = converge::complete(&receipt, &accesses, &replay, &mut writer, options)?;
+    let removed = converge::complete(control, &receipt, &accesses, &replay, &mut writer, options)?;
     append_finished(&mut writer, &replay)?;
     consume(control, &replay, receipt.id())?;
     Ok(report(&replay, RecoveryAction::RolledBack, removed))

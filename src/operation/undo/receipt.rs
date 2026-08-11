@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     Sha256Hash,
     error::{TransactionPhase, WorktreeError, WorktreeErrorCode},
-    filesystem::{ControlDir, PresentEvidence, SlotEvidence},
+    filesystem::{ControlDir, FsRoot, PresentEvidence, SlotEvidence},
     hash::serialized_hash,
     options::WorktreeOptions,
 };
@@ -113,6 +113,52 @@ pub(in crate::operation) fn prepare_retention(
         checksum,
         stored_bytes,
     })
+}
+
+/// Idempotently centralizes every retained backup named by a durable receipt.
+/// Finished-commit recovery calls this while the operation journal still
+/// protects a crash between individual cross-directory renames.
+pub(in crate::operation) fn relocate_backups(
+    control: &ControlDir,
+    root: &FsRoot,
+    receipt: &StoredReceipt,
+    options: WorktreeOptions,
+) -> Result<(), WorktreeError> {
+    for (position, path) in receipt.paths().iter().enumerate() {
+        let (Some(name), Some(expected)) = (path.backup_name.as_deref(), path.backup) else {
+            continue;
+        };
+        let access = root.open_target(&path.path).map_err(|error| {
+            undo_io(
+                TransactionPhase::Recover,
+                "failed to reopen a retained backup parent",
+                error,
+            )
+            .at_path(path.path.clone())
+            .at_file(position)
+            .in_transaction(receipt.id().to_owned())
+            .requiring_recovery()
+        })?;
+        control
+            .retain_backup_from(
+                &access,
+                name,
+                expected,
+                options.limits.max_source_bytes_per_file,
+            )
+            .map_err(|error| {
+                undo_io(
+                    TransactionPhase::Recover,
+                    "failed to move retained backup into the state directory",
+                    error,
+                )
+                .at_path(path.path.clone())
+                .at_file(position)
+                .in_transaction(receipt.id().to_owned())
+                .requiring_recovery()
+            })?;
+    }
+    Ok(())
 }
 
 fn body_from(transaction: &PreparedWorktreeTransaction) -> Result<ReceiptBody, WorktreeError> {

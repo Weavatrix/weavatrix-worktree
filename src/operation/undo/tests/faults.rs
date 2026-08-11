@@ -120,7 +120,9 @@ fn crash_at_the_two_link_backup_intermediate_is_finished_exactly() {
     ));
     fs::remove_file(temp.path().join("made.rs")).unwrap();
     let access = root.open_target("gone.rs").unwrap();
-    access.link_absent_from(&backup_name(&undo_id, 1)).unwrap();
+    control(&root)
+        .link_absent_target_from_backup(&access, &backup_name(&undo_id, 1))
+        .unwrap();
 
     let report = Worktree::open(temp.path()).unwrap().recover().unwrap();
 
@@ -134,13 +136,14 @@ fn crash_after_finished_rollback_consumes_receipt_and_journal() {
     let (temp, undo_id) = retained_apply();
     let root = FsRoot::open(temp.path()).unwrap();
     fs::remove_file(temp.path().join("made.rs")).unwrap();
-    root.open_target("gone.rs")
-        .unwrap()
-        .install_absent_from(&backup_name(&undo_id, 1))
+    let control = control(&root);
+    let gone = root.open_target("gone.rs").unwrap();
+    control
+        .install_absent_target_from_backup(&gone, &backup_name(&undo_id, 1))
         .unwrap();
-    root.open_target("edit.rs")
-        .unwrap()
-        .replace_from(&backup_name(&undo_id, 0))
+    let edit = root.open_target("edit.rs").unwrap();
+    control
+        .replace_target_from_backup(&edit, &backup_name(&undo_id, 0))
         .unwrap();
     drop(undo_writer(
         &root,

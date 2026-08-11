@@ -58,7 +58,7 @@ impl FsRoot {
             return Ok(None);
         };
         let worktree = open_or_create_child(&weavatrix, "worktree", create)?;
-        Ok(worktree.map(ControlDir::new))
+        Ok(worktree.map(|dir| ControlDir::new(dir, self.device)))
     }
 }
 

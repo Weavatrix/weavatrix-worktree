@@ -1,6 +1,6 @@
 use crate::{
     error::WorktreeError,
-    filesystem::{FsRoot, TargetAccess},
+    filesystem::{ControlDir, FsRoot, TargetAccess},
     options::WorktreeOptions,
 };
 
@@ -9,6 +9,7 @@ use super::{ReceiptPath, StoredReceipt, conflict, state_bytes, verify_io};
 /// Compares every retained path and artifact with the receipt's exact
 /// committed evidence before any mutation is allowed to start.
 pub(super) fn verify_receipt_state(
+    control: &ControlDir,
     root: &FsRoot,
     receipt: &StoredReceipt,
     options: WorktreeOptions,
@@ -27,22 +28,22 @@ pub(super) fn verify_receipt_state(
                 "retained path no longer matches its exact committed state",
             ));
         }
-        verify_backup(&access, path, options)?;
+        verify_backup(control, path, options)?;
         accesses.push(access);
     }
     Ok(accesses)
 }
 
 fn verify_backup(
-    access: &TargetAccess,
+    control: &ControlDir,
     path: &ReceiptPath,
     options: WorktreeOptions,
 ) -> Result<(), WorktreeError> {
     let (Some(name), Some(expected)) = (path.backup_name.as_deref(), path.backup) else {
         return Ok(());
     };
-    let actual = access
-        .artifact_evidence(name, options.limits.max_source_bytes_per_file)
+    let actual = control
+        .backup_evidence(name, options.limits.max_source_bytes_per_file)
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
                 conflict(path, "retained undo artifact is missing")

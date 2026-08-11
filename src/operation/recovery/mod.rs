@@ -92,9 +92,16 @@ pub(crate) fn recover_operation_transaction(
         })?;
     let action = recover_state(&parsed, options, &mut writer)?;
     let retained = retained_receipt(&locked.control, &transaction_id, options)?;
-    let keep_backups = retained && action == RecoveryAction::FinishedCommitCleanup;
+    let keep_backups = retained.is_some() && action == RecoveryAction::FinishedCommitCleanup;
     let removed = cleanup_artifacts(&parsed, options, keep_backups)?;
-    if retained && !keep_backups {
+    if keep_backups {
+        super::undo::relocate_backups(
+            &locked.control,
+            root,
+            retained.as_ref().expect("checked retained receipt"),
+            options,
+        )?;
+    } else if retained.is_some() {
         // The receipt was transitional: the journal did not finish as
         // committed, so its backups were consumed or discarded above.
         locked
@@ -125,14 +132,12 @@ fn retained_receipt(
     control: &ControlDir,
     transaction_id: &str,
     options: WorktreeOptions,
-) -> Result<bool, WorktreeError> {
+) -> Result<Option<super::undo::StoredReceipt>, WorktreeError> {
     if transaction_id.parse::<super::UndoId>().is_err() {
-        return Ok(false);
+        return Ok(None);
     }
-    let receipt: Option<super::undo::StoredReceipt> =
-        super::undo::read_exact(control, transaction_id, options)
-            .map_err(|error| error.in_transaction(transaction_id.to_owned()))?;
-    Ok(receipt.is_some())
+    super::undo::read_exact(control, transaction_id, options)
+        .map_err(|error| error.in_transaction(transaction_id.to_owned()))
 }
 
 pub(super) fn append_finished(

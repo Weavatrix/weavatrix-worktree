@@ -110,6 +110,46 @@ fn retained_apply_then_rollback_restores_exact_bytes_and_absence() {
 }
 
 #[test]
+fn retained_backups_live_only_in_the_state_directory() {
+    let (temp, plan) = fixture();
+    let worktree = Worktree::open(temp.path()).unwrap();
+
+    let report = worktree
+        .apply_plan_retained(&plan, UndoRetention::default())
+        .unwrap();
+
+    let source_backups = fs::read_dir(temp.path().join("src"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".backup"))
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    assert!(
+        source_backups.is_empty(),
+        "retained backups leaked beside source files: {source_backups:?}"
+    );
+
+    let state_backups = fs::read_dir(temp.path().join(".weavatrix/worktree"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().ends_with(".backup"))
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    assert_eq!(state_backups.len(), 3, "state backups: {state_backups:?}");
+    let expected_prefix = format!(".weavatrix-{}-", report.undo_id().as_str());
+    assert!(
+        state_backups
+            .iter()
+            .all(|name| name.starts_with(&expected_prefix)),
+        "state backups are not bound to the undo id: {state_backups:?}"
+    );
+
+    worktree.rollback_undo(report.undo_id()).unwrap();
+    assert_originals(temp.path());
+    assert_no_transaction_artifacts(temp.path());
+}
+
+#[test]
 fn receipts_persist_across_worktree_instances() {
     let (temp, plan) = fixture();
     let undo_id = Worktree::open(temp.path())
@@ -186,7 +226,7 @@ fn discard_rejects_a_tampered_retained_artifact() {
     let report = worktree
         .apply_plan_retained(&plan, UndoRetention::default())
         .unwrap();
-    let backup = temp.path().join("src").join(format!(
+    let backup = temp.path().join(".weavatrix/worktree").join(format!(
         ".weavatrix-{}-0000.backup",
         report.undo_id().as_str()
     ));

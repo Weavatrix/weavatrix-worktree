@@ -221,9 +221,13 @@ and at most one active journal (`active.jsonl` for existing-file plans,
 `active-v3.jsonl` for new refactor-plan operations, or `active-undo.jsonl` for
 an in-flight undo rollback). A pre-existing `active-v2.jsonl` is accepted only
 for recovery. Retained undo receipts are stored as `undo-<transaction>.json`
-beside the journals. Stage and backup files are adjacent to their target and
-use a random 128-bit transaction identifier plus the stable file index.
-Artifact creation is exclusive and never follows an existing link.
+beside the journals. During an active operation, stage and backup files are
+adjacent to their target and use a random 128-bit transaction identifier plus
+the stable file index. After a retained commit has a durable
+`Finished(COMMITTED)` record, its exact backups are moved into the control
+directory before the operation journal is removed. Recovery completes a
+partially moved set idempotently. Artifact creation is exclusive and never
+follows an existing link.
 
 Artifacts carry enough evidence for recovery:
 
@@ -339,7 +343,11 @@ journal is active the receipt is transitional and never observable through the
 API: recovery keeps it only when the journal finished as committed and removes
 it for every other outcome, and an in-process commit failure removes it before
 the backups are consumed by rollback. A crash anywhere between the receipt
-write and journal removal therefore resolves deterministically.
+write and journal removal therefore resolves deterministically. After the
+durable finished record, backups are relocated one at a time from target
+parents into `.weavatrix/worktree`; the still-present operation journal makes
+that cleanup restartable and prevents successful retained applies from
+littering source directories.
 
 `rollback_undo` is an exact compare-and-swap. Before any mutation it verifies
 every path against the receipt's complete after evidence (hash, bytes,

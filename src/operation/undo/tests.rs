@@ -143,6 +143,18 @@ fn crash_after_finished_commit_keeps_receipt_and_backups_for_rollback() {
             outcome: crate::journal::FinishOutcome::Committed,
         })
         .unwrap();
+    // Simulate a crash after the first retained backup moved into state but
+    // before the remaining backup and journal cleanup completed.
+    let first = &prepared.paths[0];
+    prepared
+        .control
+        .retain_backup_from(
+            &first.access,
+            first.backup_name.as_deref().unwrap(),
+            first.backup.unwrap(),
+            options.limits.max_source_bytes_per_file,
+        )
+        .unwrap();
     drop(prepared);
 
     let report = crate::operation::recover_operation_transaction(&root, options)
@@ -152,6 +164,11 @@ fn crash_after_finished_commit_keeps_receipt_and_backups_for_rollback() {
     assert_eq!(report.action(), RecoveryAction::FinishedCommitCleanup);
     assert!(receipt_exists(&temp, &transaction_id));
     assert_committed(temp.path());
+    for index in [0, 1] {
+        let name = backup_name(&transaction_id, index);
+        assert!(temp.path().join(".weavatrix/worktree").join(&name).exists());
+        assert!(!temp.path().join(&name).exists());
+    }
 
     let worktree = Worktree::open(temp.path()).unwrap();
     let receipts = worktree.undo_receipts().unwrap();

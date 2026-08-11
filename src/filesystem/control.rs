@@ -5,6 +5,8 @@ use cap_std::fs::{Dir, OpenOptions};
 
 use super::sync_directory;
 
+mod retained;
+
 const LEGACY_JOURNAL: &str = "active.jsonl";
 const LEGACY_OPERATION_JOURNAL: &str = "active-v2.jsonl";
 const OPERATION_JOURNAL: &str = "active-v3.jsonl";
@@ -14,11 +16,12 @@ const UNDO_SUFFIX: &str = ".json";
 
 pub(crate) struct ControlDir {
     dir: Dir,
+    device: u64,
 }
 
 impl ControlDir {
-    pub(crate) const fn new(dir: Dir) -> Self {
-        Self { dir }
+    pub(crate) const fn new(dir: Dir, device: u64) -> Self {
+        Self { dir, device }
     }
 
     pub(crate) fn open_lock(&self) -> io::Result<std::fs::File> {
