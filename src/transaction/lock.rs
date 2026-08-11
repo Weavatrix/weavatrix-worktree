@@ -5,7 +5,31 @@ use crate::{
 
 pub(crate) struct TransactionLock {
     pub(crate) control: ControlDir,
-    pub(crate) file: std::fs::File,
+    pub(crate) file: LockGuard,
+}
+
+/// Releases the advisory root lock explicitly before the file handle closes.
+///
+/// A duplicated or inherited handle can keep the same open file description
+/// alive on Unix. `flock(LOCK_UN)` is shared by those duplicates, while merely
+/// dropping one handle is not enough.
+pub(crate) struct LockGuard(std::fs::File);
+
+impl LockGuard {
+    const fn new(file: std::fs::File) -> Self {
+        Self(file)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_clone(&self) -> std::io::Result<std::fs::File> {
+        self.0.try_clone()
+    }
+}
+
+impl Drop for LockGuard {
+    fn drop(&mut self) {
+        let _ = fs4::FileExt::unlock(&self.0);
+    }
 }
 
 pub(crate) fn acquire(root: &FsRoot) -> Result<TransactionLock, WorktreeError> {
@@ -35,7 +59,10 @@ pub(crate) fn acquire(root: &FsRoot) -> Result<TransactionLock, WorktreeError> {
         )
     })?;
     match fs4::FileExt::try_lock(&file) {
-        Ok(()) => Ok(TransactionLock { control, file }),
+        Ok(()) => Ok(TransactionLock {
+            control,
+            file: LockGuard::new(file),
+        }),
         Err(fs4::TryLockError::WouldBlock) => Err(WorktreeError::new(
             WorktreeErrorCode::RootBusy,
             TransactionPhase::Lock,

@@ -43,7 +43,7 @@ pub struct PreparedWorktreeTransaction {
     root: FsRoot,
     journal: Writer,
     control: ControlDir,
-    _lock: std::fs::File,
+    _lock: crate::transaction::LockGuard,
 }
 
 impl core::fmt::Debug for PreparedWorktreeTransaction {

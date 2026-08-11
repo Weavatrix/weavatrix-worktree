@@ -28,7 +28,7 @@ pub struct PreparedTransaction {
     options: WorktreeOptions,
     journal: JournalWriter,
     control: ControlDir,
-    _lock: std::fs::File,
+    _lock: LockGuard,
 }
 
 impl core::fmt::Debug for PreparedTransaction {
@@ -54,7 +54,7 @@ impl PreparedTransaction {
     }
 }
 
-pub(crate) use lock::acquire;
+pub(crate) use lock::{LockGuard, acquire};
 pub(crate) use plan::{dry_run_report, project_plan};
 pub(crate) use prepare::prepare_transaction;
 pub(crate) use recovery::recover_transaction;

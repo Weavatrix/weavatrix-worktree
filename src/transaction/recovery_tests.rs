@@ -187,3 +187,18 @@ fn no_journal_reports_no_pending_transaction() -> TestResult {
     assert_eq!(report.action(), RecoveryAction::NoPendingTransaction);
     Ok(())
 }
+
+#[test]
+#[allow(clippy::used_underscore_binding)]
+fn dropping_a_prepared_transaction_unlocks_even_with_a_live_duplicate() -> TestResult {
+    let (_temp, root, plan, _) = fixture(1)?;
+    let options = WorktreeOptions::default();
+    let transaction = prepare_transaction(&root, options, &plan)?;
+    let _duplicate = transaction._lock.try_clone()?;
+    drop(transaction);
+
+    let report = recover_transaction(&root, options)?;
+
+    assert_eq!(report.action(), RecoveryAction::DiscardedStaging);
+    Ok(())
+}
