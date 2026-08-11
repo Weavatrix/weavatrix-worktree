@@ -14,7 +14,7 @@ multi-file commit, rollback, and journal-based crash recovery.
 
 ## Status
 
-Version `0.2.0` retains the existing `EditPlan` runtime API and executes the
+Version `0.2.1` retains the existing `EditPlan` runtime API and executes the
 versioned `RefactorPlan` contract for exact `modify`, `create`, `delete`, and
 `rename` operations. The compatibility names `WorktreePlan`,
 `WorktreeOperation`, `WorktreePlanLimits`, and `WORKTREE_PLAN_SCHEMA` are public
@@ -28,8 +28,8 @@ Install the released crates from crates.io:
 
 ```toml
 [dependencies]
-weavatrix-refactor-plan = "0.1.0"
-weavatrix-worktree = "0.2.0"
+weavatrix-refactor-plan = "0.1.1"
+weavatrix-worktree = "0.2.1"
 ```
 
 The crate requires Rust 1.88 or newer and contains no async runtime or unsafe
