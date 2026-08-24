@@ -2,11 +2,11 @@
 
 This is a reproducible single-machine snapshot, not a universal ranking.
 The measured source commit is
-[`c8e527a`](https://github.com/sergii-ziborov/weavatrix-worktree/commit/c8e527accd1be09c3e48455d57f36b3cb770cbf6).
+[`c8e527a`](https://github.com/Weavatrix/weavatrix-worktree/commit/c8e527accd1be09c3e48455d57f36b3cb770cbf6).
 
 The complete config, machine metadata, CSV, JSONL, and summaries are attached
 to the public
-[`benchmarks-2026-08-02` evidence release](https://github.com/sergii-ziborov/weavatrix-worktree/releases/tag/benchmarks-2026-08-02).
+[`benchmarks-2026-08-02` evidence release](https://github.com/Weavatrix/weavatrix-worktree/releases/tag/benchmarks-2026-08-02).
 The ZIP is 1,969,128 bytes and its SHA-256 is
 `c65f8de639eecde341340624502bbebf354f97dc97a3bda0e270f7ba00330b53`.
 The release was downloaded again after upload and matched that digest.
@@ -54,7 +54,7 @@ recoverable-durable contract.
 The system Git CLI passed every content and cleanup gate for its declared modes,
 but documents no worktree fsync, journal, restart recovery, full-file CAS, or
 worker control. Its apply results remain in the separate non-durable class.
-This adapter is unrelated to [`weavatrix-git`](https://github.com/sergii-ziborov/weavatrix-git),
+This adapter is unrelated to [`weavatrix-git`](https://github.com/Weavatrix/weavatrix-git),
 which is a read-only Git intelligence crate and deliberately provides no
 checkout, patch application, or repository mutation.
 

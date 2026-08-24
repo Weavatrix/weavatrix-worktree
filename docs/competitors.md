@@ -31,7 +31,7 @@ atomically visible. Those are different guarantees.
 it does not mean that every application built on it is unsafe.
 
 The `git apply` row below is the installed system Git CLI. It is unrelated to
-[`weavatrix-git`](https://github.com/sergii-ziborov/weavatrix-git), whose public
+[`weavatrix-git`](https://github.com/Weavatrix/weavatrix-git), whose public
 contract is read-only Git evidence with no checkout or repository mutation.
 
 | System | Scope and preflight | Stale-source guard | Path and link safety | Concurrency | Failure and recovery | Durability contract |

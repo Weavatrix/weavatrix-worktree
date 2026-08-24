@@ -1,4 +1,4 @@
-﻿[package]
+[package]
 name = "weavatrix-worktree"
 version = "0.2.1"
 edition = "2024"
@@ -7,7 +7,7 @@ description = "Bounded, crash-recoverable multi-file worktree edits for source r
 license = "MIT"
 authors = ["Sergii Ziborov <sergii.ziborov@gmail.com>"]
 homepage = "https://weavatrix.com"
-repository = "https://github.com/sergii-ziborov/weavatrix-worktree"
+repository = "https://github.com/Weavatrix/weavatrix-worktree"
 documentation = "https://docs.rs/weavatrix-worktree"
 readme = "README.md"
 keywords = ["refactoring", "transaction", "worktree", "text-edit", "weavatrix"]

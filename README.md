@@ -1,7 +1,14 @@
 # weavatrix-worktree
 
+[![CI](https://github.com/Weavatrix/weavatrix-worktree/actions/workflows/ci.yml/badge.svg)](https://github.com/Weavatrix/weavatrix-worktree/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/weavatrix-worktree.svg)](https://crates.io/crates/weavatrix-worktree)
+[![docs.rs](https://docs.rs/weavatrix-worktree/badge.svg)](https://docs.rs/weavatrix-worktree)
+[![MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+The crash-recoverable transaction layer of the [Weavatrix ecosystem](https://weavatrix.com/ecosystem).
+
 Bounded, crash-recoverable multi-file execution of
-[`weavatrix-refactor-plan`](https://github.com/sergii-ziborov/weavatrix-refactor-plan)
+[`weavatrix-refactor-plan`](https://github.com/Weavatrix/weavatrix-refactor-plan)
 contracts.
 
 `weavatrix-edit` owns exact immutable-text edits. `weavatrix-refactor-plan`
@@ -211,7 +218,7 @@ Callers needing hostile-writer isolation must provide it outside this crate.
 The [competitor audit](docs/competitors.md) compares this contract with
 `atomwrite`, `textum`, `rustfix`, Cargo Fix, the system Git CLI's `git apply`,
 libgit2, and gix. The Git CLI baseline is unrelated to the read-only
-[`weavatrix-git`](https://github.com/sergii-ziborov/weavatrix-git) project.
+[`weavatrix-git`](https://github.com/Weavatrix/weavatrix-git) project.
 The [benchmark protocol](docs/benchmarks.md) defines correctness-gated 1, 5,
 10, and 64-file scenarios, concurrency sweeps, durable/non-durable separation,
 fault injection, and resource measurements. Benchmark numbers are published
